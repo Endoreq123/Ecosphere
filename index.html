@@ -1,0 +1,3363 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<meta name="theme-color" content="#0b1120">
+<title>ECOSPHERE — Symulator Ekosystemu</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600&family=Inter:wght@300;400;500;600&display=swap');
+
+:root {
+  /* Ciemna paleta naukowa */
+  --bg:    #0b1120;
+  --bg2:   #0f1729;
+  --panel: #111d30;
+  --panel2:#162038;
+  --brd:   #1e3050;
+  --brd2:  #253d63;
+
+  /* Kolory akcentów — jak w Nature/Cell */
+  --blue:  #4d9ef7;
+  --cyan:  #00d4e8;
+  --green: #2ec484;
+  --orange:#f5a623;
+  --red:   #e5534b;
+  --purple:#9b8afb;
+  --yellow:#f0e040;
+
+  --txt:   #8ba0be;
+  --txt2:  #b8cce0;
+  --hi:    #ddeeff;
+
+  --font-mono: 'JetBrains Mono', monospace;
+  --font-sans: 'Inter', sans-serif;
+
+  --dw: 300px;
+  --right-w: 260px;
+}
+
+* { box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
+html,body { width:100%; height:100%; overflow:hidden; background:var(--bg);
+  color:var(--txt); font-family:var(--font-sans); font-size:13px; }
+button,input,select { font-family:inherit; }
+
+/* ── CANVAS ── */
+#cvBiome { position:fixed; top:0; left:0; right:0; bottom:0; display:block; }
+#cvCells { position:fixed; top:0; left:0; right:0; bottom:0; display:block; touch-action:none; }
+#cvHud   { position:fixed; top:0; left:0; right:0; bottom:0; display:block; pointer-events:none; }
+
+/* ── LAYOUT: left drawer + center canvas + right panel ── */
+#rightPanel {
+  position:fixed; top:44px; right:0; bottom:0; width:var(--right-w);
+  background:rgba(11,17,32,0.88);
+  border-left:1px solid var(--brd);
+  z-index:150; display:flex; flex-direction:column; overflow:hidden;
+  backdrop-filter:blur(10px);
+  -webkit-backdrop-filter:blur(10px);
+}
+@media(max-width:900px){ #rightPanel { display:none; } }
+
+/* ── TOP BAR ── */
+#topbar {
+  position:fixed; top:0; left:0; right:0; height:44px;
+  display:flex; align-items:center; justify-content:space-between;
+  padding:0 12px; z-index:200;
+  background:var(--bg2); border-bottom:1px solid var(--brd);
+}
+
+#topbar>*{ flex-shrink:0; }
+
+.logo {
+  font-family:var(--font-mono); font-weight:600; font-size:14px;
+  color:var(--cyan); letter-spacing:2px; white-space:nowrap;
+}
+.logo span { color:var(--blue); }
+
+/* hamburger */
+#menuBtn {
+  width:34px; height:34px; border-radius:4px;
+  background:transparent; border:1px solid var(--brd);
+  cursor:pointer; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:4px; transition:all .2s;
+}
+#menuBtn:hover { border-color:var(--cyan); background:rgba(0,212,232,.08); }
+#menuBtn span { display:block; width:14px; height:1.5px;
+  background:var(--txt2); border-radius:1px; transition:all .25s; }
+#menuBtn.open span:nth-child(1){ transform:translateY(5.5px) rotate(45deg); }
+#menuBtn.open span:nth-child(2){ opacity:0; }
+#menuBtn.open span:nth-child(3){ transform:translateY(-5.5px) rotate(-45deg); }
+
+/* timer */
+#timeBox { text-align:center; pointer-events:none; }
+#timeVal { font-family:var(--font-mono); font-size:16px; font-weight:600;
+  color:var(--hi); letter-spacing:1px; display:block; }
+#seasonBadge { font-family:var(--font-mono); font-size:9px;
+  color:var(--cyan); letter-spacing:1px; }
+
+/* timescale */
+.ts-group { display:flex; gap:2px; }
+.tsbtn {
+  padding:4px 9px; border:1px solid var(--brd); background:transparent;
+  color:var(--txt); font-family:var(--font-mono); font-size:9px;
+  letter-spacing:1px; cursor:pointer; border-radius:3px; transition:all .15s;
+}
+.tsbtn:hover,.tsbtn.active {
+  border-color:var(--cyan); color:var(--cyan);
+  background:rgba(0,212,232,.08);
+}
+
+/* ── HUD STATS (below topbar) ── */
+#hudStats {
+  position:fixed; top:44px; left:50%;
+  transform:translateX(-50%);
+  display:flex; gap:4px; z-index:200; pointer-events:none;
+  padding:4px 0;
+}
+@media(max-width:900px){ #hudStats { transform:translateX(-50%); } }
+.hs {
+  display:flex; flex-direction:column; align-items:center;
+  font-family:var(--font-mono); font-size:8px; letter-spacing:.5px;
+  color:var(--txt); background:rgba(11,17,32,.85); border:1px solid var(--brd);
+  padding:3px 8px; border-radius:3px; backdrop-filter:blur(4px);
+}
+.hs-v { font-family:var(--font-mono); font-size:13px; font-weight:600; color:var(--hi); }
+.hs-v.c { color:var(--cyan); }
+.hs-v.g { color:var(--green); }
+.hs-v.r { color:var(--red); }
+.hs-v.y { color:var(--yellow); }
+@media(max-width:440px){ .hs-hide { display:none; } }
+
+/* ── TOOL BAR (right of canvas, above right panel) ── */
+#toolbar {
+  position:fixed; top:52px; right:calc(var(--right-w) + 6px); z-index:200;
+  display:flex; flex-direction:column; gap:3px;
+}
+@media(max-width:900px){ #toolbar { right:8px; } }
+@media(min-width:900px){ #toolbar { right:calc(var(--right-w) + 6px); } }
+.tbtn {
+  width:32px; height:32px; border-radius:4px; border:1px solid var(--brd);
+  background:rgba(15,23,41,.9); color:var(--txt); font-size:11px;
+  font-family:var(--font-mono); cursor:pointer; display:flex;
+  align-items:center; justify-content:center; transition:all .15s;
+  backdrop-filter:blur(4px);
+}
+.tbtn:hover { border-color:var(--blue); color:var(--blue);
+  background:rgba(77,158,247,.1); }
+.tbtn.on { border-color:var(--cyan); color:var(--cyan);
+  background:rgba(0,212,232,.12); }
+.tbtn.r.on { border-color:var(--red); color:var(--red); }
+
+#zoneType {
+  width:32px; height:26px; background:var(--panel);
+  border:1px solid var(--brd); color:var(--orange);
+  font-size:9px; border-radius:3px; cursor:pointer; text-align:center;
+}
+.brush-row { display:flex; flex-direction:column; align-items:center; gap:2px; }
+.brush-row input[type=range] {
+  -webkit-appearance:none; width:32px; height:3px;
+  background:var(--brd); border-radius:2px; outline:none; cursor:pointer;
+}
+.brush-row input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance:none; width:10px; height:10px; border-radius:50%;
+  background:var(--orange); cursor:pointer;
+}
+.brush-lbl { font-family:var(--font-mono); font-size:7px; color:var(--txt); }
+
+/* ── ZOOM ── */
+#zoomCtrl {
+  position:fixed; right:calc(var(--right-w) + 6px); bottom:60px;
+  z-index:200; display:flex; flex-direction:column; gap:3px;
+}
+@media(max-width:900px){ #zoomCtrl { right:8px; } }
+@media(min-width:900px){ #zoomCtrl { right:calc(var(--right-w) + 6px); } }
+.zbtn {
+  width:32px; height:28px; border-radius:4px; border:1px solid var(--brd);
+  background:rgba(15,23,41,.9); color:var(--txt2); font-size:15px;
+  cursor:pointer; display:flex; align-items:center; justify-content:center;
+  backdrop-filter:blur(4px); transition:all .15s;
+}
+.zbtn:hover { border-color:var(--blue); color:var(--blue); }
+#zoomVal { font-family:var(--font-mono); font-size:8px; color:var(--txt);
+  text-align:center; }
+
+/* ── BOTTOM CONTROLS ── */
+#quickCtrl {
+  position:fixed; bottom:8px;
+  left:50%; transform:translateX(-50%);
+  display:flex; align-items:center; justify-content:center;
+  gap:5px; z-index:200; white-space:nowrap;
+}
+@media(max-width:900px){ #quickCtrl { left:0; right:0; } }
+.qbtn {
+  padding:6px 12px; border:1px solid var(--brd); background:var(--panel);
+  color:var(--txt2); font-family:var(--font-mono); font-size:9px;
+  letter-spacing:1px; cursor:pointer; border-radius:4px; transition:all .15s;
+  white-space:nowrap; user-select:none;
+}
+.qbtn:hover { border-color:var(--blue); color:var(--blue);
+  background:rgba(77,158,247,.1); }
+.qbtn.active { border-color:var(--cyan); color:var(--cyan);
+  background:rgba(0,212,232,.1); }
+.qbtn.r { color:var(--red); border-color:rgba(229,83,75,.4); }
+.qbtn.r:hover { background:rgba(229,83,75,.15); }
+.qbtn.o { color:var(--orange); border-color:rgba(245,166,35,.4); }
+.qbtn.o:hover { background:rgba(245,166,35,.15); }
+.qbtn:disabled { opacity:.28; cursor:not-allowed; }
+.qdiv { width:1px; height:18px; background:var(--brd); }
+
+/* Mobile bar */
+#mobileBar {
+  display:none; position:fixed; bottom:0; left:0; right:0; height:50px;
+  background:var(--bg2); border-top:1px solid var(--brd); z-index:200;
+  align-items:center; justify-content:space-around; padding:0 4px;
+}
+.mb-btn {
+  flex:1; height:38px; margin:0 2px; border:1px solid var(--brd);
+  border-radius:4px; background:transparent; color:var(--txt2);
+  font-family:var(--font-mono); font-size:7px; cursor:pointer;
+  display:flex; align-items:center; justify-content:center; gap:3px;
+  transition:all .15s; user-select:none;
+}
+.mb-btn:active,.mb-btn.active { border-color:var(--cyan); color:var(--cyan);
+  background:rgba(0,212,232,.1); }
+.mb-btn.r { color:var(--red); }
+.mb-btn.o { color:var(--orange); }
+.mb-btn:disabled { opacity:.25; pointer-events:none; }
+.mb-ic { font-size:12px; } .mb-lb { font-size:6px; }
+@media(max-width:600px){
+  #quickCtrl { display:none; } #mobileBar { display:flex; }
+}
+
+/* ── PAUSED ── */
+#pausedBadge {
+  position:fixed; top:50%; left:50%;
+  transform:translate(-50%, -50%);
+  font-family:var(--font-mono); font-weight:600;
+  font-size:clamp(20px,6vw,44px); color:var(--orange);
+  letter-spacing:6px; opacity:.85; display:none;
+  pointer-events:none; z-index:300;
+}
+
+/* ── TOOLTIP ── */
+#tip {
+  position:fixed; background:var(--panel2); border:1px solid var(--brd2);
+  padding:8px 12px; font-family:var(--font-mono); font-size:10px;
+  color:var(--hi); pointer-events:none; z-index:500; border-radius:4px;
+  display:none; line-height:1.8; white-space:nowrap;
+  box-shadow:0 4px 20px rgba(0,0,0,.4);
+}
+@media(max-width:600px){ #tip { display:none!important; } }
+
+/* ── ZONE LEGEND ── */
+#zoneLegend {
+  position:fixed; top:52px; left:calc(var(--dw)+8px); z-index:200;
+  display:none; flex-direction:column; gap:2px;
+}
+#zoneLegend.show { display:flex; }
+.zleg {
+  font-family:var(--font-mono); font-size:8px; display:flex;
+  align-items:center; gap:5px; background:rgba(11,17,32,.88);
+  border:1px solid var(--brd); padding:3px 8px; border-radius:3px;
+}
+.zleg-dot { width:8px; height:8px; border-radius:2px; flex-shrink:0; }
+
+/* ── EXTINCTION BANNER ── */
+#extinctionBanner {
+  position:fixed; top:50%; left:50%;
+  transform:translate(-50%, -50%);
+  z-index:600; font-family:var(--font-mono); font-weight:600;
+  font-size:clamp(18px,5vw,38px); color:var(--red); text-align:center;
+  letter-spacing:4px; opacity:0; pointer-events:none; transition:opacity .5s;
+}
+#extinctionBanner.show { opacity:.9; }
+#extinctionBanner small { display:block; font-size:.42em; color:var(--orange);
+  letter-spacing:2px; margin-top:6px; }
+
+/* ══════════════════════════════════
+   LEFT DRAWER
+══════════════════════════════════ */
+#backdrop { position:fixed; inset:0; background:rgba(0,0,0,.5);
+  z-index:350; display:none; }
+#backdrop.show { display:block; }
+
+#drawer {
+  position:fixed; top:0; left:0; bottom:0; width:var(--dw);
+  background:var(--panel); border-right:1px solid var(--brd);
+  z-index:400; transform:translateX(-100%);
+  transition:transform .3s cubic-bezier(.4,0,.2,1);
+  display:flex; flex-direction:column; overflow:hidden;
+}
+#drawer.open { transform:translateX(0); }
+
+#drawerHead {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:10px 14px; border-bottom:1px solid var(--brd); flex-shrink:0;
+  background:var(--bg2); min-height:44px;
+}
+#drawerHead h2 { font-family:var(--font-mono); font-size:10px;
+  letter-spacing:2px; color:var(--cyan); font-weight:600; }
+#closeDrawer {
+  width:28px; height:28px; border-radius:4px; background:transparent;
+  border:1px solid var(--brd); color:var(--txt); font-size:12px;
+  cursor:pointer; display:flex; align-items:center; justify-content:center;
+  transition:all .2s;
+}
+#closeDrawer:hover { border-color:var(--cyan); color:var(--cyan); }
+
+.dtabs { display:flex; border-bottom:1px solid var(--brd); flex-shrink:0; }
+.dtab {
+  flex:1; padding:8px 2px; text-align:center; font-family:var(--font-mono);
+  font-size:8px; letter-spacing:1px; color:var(--txt); cursor:pointer;
+  border-bottom:2px solid transparent; transition:all .2s;
+}
+.dtab:hover { color:var(--blue); }
+.dtab.on { color:var(--cyan); border-bottom-color:var(--cyan);
+  background:rgba(0,212,232,.04); }
+
+.dbody { flex:1; overflow-y:auto; padding:14px; }
+.dbody::-webkit-scrollbar { width:3px; }
+.dbody::-webkit-scrollbar-thumb { background:var(--brd); border-radius:2px; }
+
+.tab { display:none; } .tab.on { display:block; }
+.sec { margin-bottom:18px; }
+.sec-t {
+  font-family:var(--font-mono); font-size:8px; letter-spacing:2px;
+  color:var(--blue); margin-bottom:10px; padding-bottom:5px;
+  border-bottom:1px solid var(--brd); text-transform:uppercase;
+}
+.drow { margin-bottom:12px; }
+.dlbl {
+  font-family:var(--font-mono); font-size:9px; color:var(--txt2);
+  display:flex; justify-content:space-between; margin-bottom:5px;
+}
+.dlbl .dv { color:var(--cyan); }
+
+input[type=range] {
+  -webkit-appearance:none; width:100%; height:3px;
+  background:var(--brd); border-radius:2px; outline:none; cursor:pointer;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance:none; width:14px; height:14px; border-radius:50%;
+  background:var(--blue); cursor:pointer;
+}
+input[type=range].g::-webkit-slider-thumb { background:var(--green); }
+input[type=range].o::-webkit-slider-thumb { background:var(--orange); }
+input[type=range].r::-webkit-slider-thumb { background:var(--red); }
+
+.presets { display:grid; grid-template-columns:1fr 1fr; gap:4px; margin-bottom:14px; }
+.pbtn {
+  padding:7px 4px; text-align:center; border:1px solid var(--brd);
+  background:transparent; color:var(--txt); font-family:var(--font-mono);
+  font-size:8px; cursor:pointer; border-radius:4px; transition:all .2s;
+}
+.pbtn:hover,.pbtn.sel { border-color:var(--blue); color:var(--blue);
+  background:rgba(77,158,247,.1); }
+
+#pvWrap {
+  display:flex; align-items:center; gap:12px; padding:10px;
+  background:var(--bg); border:1px solid var(--brd); border-radius:4px;
+  margin-bottom:14px;
+}
+canvas#pvc { border:1px solid var(--brd); border-radius:3px;
+  background:var(--bg); flex-shrink:0; }
+#pvStats { font-family:var(--font-mono); font-size:9px; line-height:1.9;
+  color:var(--txt); }
+
+.dbtn {
+  width:100%; padding:9px; margin-bottom:6px; border:1px solid var(--brd);
+  background:transparent; color:var(--txt2); font-family:var(--font-mono);
+  font-size:9px; letter-spacing:1px; cursor:pointer; border-radius:4px;
+  transition:all .2s; text-align:center;
+}
+.dbtn:hover { border-color:var(--blue); color:var(--blue);
+  background:rgba(77,158,247,.08); }
+.dbtn.o { color:var(--orange); border-color:rgba(245,166,35,.35); }
+.dbtn.o:hover { background:rgba(245,166,35,.1); border-color:var(--orange); }
+.dbtn.r { color:var(--red); border-color:rgba(229,83,75,.35); }
+.dbtn.r:hover { background:rgba(229,83,75,.12); border-color:var(--red); }
+.dbtn:disabled { opacity:.25; pointer-events:none; }
+.spd-row { display:flex; gap:4px; }
+
+#startBtn {
+  width:100%; padding:11px; margin-top:4px;
+  background:rgba(0,212,232,.1); border:1px solid var(--cyan);
+  color:var(--cyan); font-family:var(--font-mono); font-size:10px;
+  letter-spacing:2px; cursor:pointer; border-radius:4px;
+  transition:all .3s; position:relative; overflow:hidden;
+}
+#startBtn:hover { background:rgba(0,212,232,.2);
+  box-shadow:0 0 20px rgba(0,212,232,.2); }
+
+.toggle-row {
+  display:flex; align-items:center; justify-content:space-between;
+  margin-bottom:10px;
+}
+.toggle-lbl { font-family:var(--font-mono); font-size:9px; color:var(--txt2); }
+.sw { position:relative; display:inline-block; width:34px; height:18px;
+  cursor:pointer; }
+.sw input { opacity:0; width:0; height:0; }
+.sw-track { position:absolute; inset:0; background:var(--brd);
+  border-radius:9px; transition:.2s; }
+.sw-thumb { position:absolute; top:2px; left:2px; width:14px; height:14px;
+  background:var(--txt); border-radius:50%; transition:.2s; }
+.sw input:checked + .sw-track { background:rgba(0,212,232,.35); }
+.sw input:checked ~ .sw-thumb { background:var(--cyan);
+  transform:translateX(16px); }
+
+.tips { font-family:var(--font-mono); font-size:8px; line-height:2;
+  color:rgba(139,160,190,.55); }
+
+/* ══════════════════════════════════
+   RIGHT PANEL — live charts + species
+══════════════════════════════════ */
+.rp-section {
+  padding:10px 12px; border-bottom:1px solid var(--brd); flex-shrink:0;
+}
+.rp-hdr {
+  font-family:var(--font-mono); font-size:8px; letter-spacing:2px;
+  color:var(--blue); margin-bottom:8px; text-transform:uppercase;
+}
+/* Live population chart */
+#liveChartCanvas {
+  width:100%; height:90px; border:1px solid var(--brd);
+  border-radius:3px; background:var(--bg); display:block;
+}
+/* Gene averages bars */
+#geneBars { display:grid; grid-template-columns:1fr 1fr; gap:4px; }
+.gene-bar-row {
+  display:flex; flex-direction:column; gap:2px;
+}
+.gene-bar-lbl {
+  font-family:var(--font-mono); font-size:7px; color:var(--txt);
+  display:flex; justify-content:space-between;
+}
+.gene-bar-bg {
+  height:5px; background:var(--brd); border-radius:3px; overflow:hidden;
+}
+.gene-bar-fill {
+  height:100%; border-radius:3px; transition:width .6s;
+}
+/* Species list */
+#spListWrap { flex:1; overflow-y:auto; }
+#spListWrap::-webkit-scrollbar { width:2px; }
+#spListWrap::-webkit-scrollbar-thumb { background:var(--brd); }
+#spList { padding:6px; }
+.sp-item {
+  padding:5px 6px; margin-bottom:3px; border-radius:3px;
+  cursor:pointer; transition:background .15s; border:1px solid transparent;
+}
+.sp-item:hover { background:rgba(255,255,255,.03); border-color:var(--brd); }
+.sp-row { display:flex; align-items:center; gap:5px; margin-bottom:2px; }
+.sp-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.sp-name { font-family:var(--font-mono); font-size:9px; flex:1;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.sp-cnt { font-family:var(--font-mono); font-size:9px; font-weight:600; }
+.sp-bar { height:2px; background:var(--brd); border-radius:1px; }
+.sp-bar-fill { height:100%; border-radius:1px; transition:width .5s; }
+.sp-role { font-family:var(--font-mono); font-size:7px;
+  color:rgba(139,160,190,.4); margin-top:1px; }
+
+/* ── LOG (bottom of right panel) ── */
+#logWrap { border-top:1px solid var(--brd); height:140px; flex-shrink:0;
+  display:flex; flex-direction:column; }
+.log-hdr { font-family:var(--font-mono); font-size:8px; letter-spacing:2px;
+  color:var(--blue); padding:6px 10px; border-bottom:1px solid var(--brd);
+  flex-shrink:0; }
+#logLines { flex:1; overflow-y:auto; padding:4px 8px; }
+#logLines::-webkit-scrollbar { width:2px; }
+#logLines::-webkit-scrollbar-thumb { background:var(--brd); }
+.ll { font-family:var(--font-mono); font-size:8px; padding:1px 0;
+  border-bottom:1px solid rgba(255,255,255,.025); line-height:1.6;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+@keyframes fadeIn { from{opacity:0}to{opacity:1} }
+.ll { animation:fadeIn .2s; }
+.lt { color:rgba(0,212,232,.35); margin-right:4px; }
+
+/* ══════════════════════════════════
+   OVERLAYS
+══════════════════════════════════ */
+
+/* Chart */
+#chartOverlay {
+  display:none; position:fixed; inset:0; background:rgba(11,17,32,.97);
+  z-index:800; flex-direction:column; align-items:center;
+  padding:24px 16px 40px; overflow-y:auto;
+}
+#chartOverlay.show { display:flex; }
+.cht-title {
+  font-family:var(--font-mono); font-size:clamp(14px,4vw,20px);
+  font-weight:600; color:var(--cyan); letter-spacing:3px;
+  margin-bottom:8px; text-align:center;
+}
+.cht-stats {
+  display:flex; gap:14px; flex-wrap:wrap; justify-content:center;
+  font-family:var(--font-mono); font-size:9px; color:var(--txt);
+  margin-bottom:14px;
+}
+.csv { color:var(--green); font-size:11px; }
+#chartWrap { width:100%; max-width:900px; overflow-x:auto; }
+canvas#chart { border:1px solid var(--brd); border-radius:4px; display:block; }
+.cht-legend {
+  display:flex; flex-wrap:wrap; gap:6px; margin-top:12px;
+  max-width:900px; justify-content:center;
+}
+.leg-i { display:flex; align-items:center; gap:4px;
+  font-family:var(--font-mono); font-size:8px; }
+.leg-d { width:8px; height:8px; border-radius:50%; }
+.cclose {
+  margin-top:16px; padding:10px 40px; background:rgba(0,212,232,.08);
+  border:1px solid var(--cyan); color:var(--cyan);
+  font-family:var(--font-mono); font-size:9px; letter-spacing:2px;
+  cursor:pointer; border-radius:4px; transition:all .2s;
+}
+.cclose:hover { background:rgba(0,212,232,.18); }
+
+/* Tree */
+#treeOverlay {
+  display:none; position:fixed; inset:0; background:rgba(11,17,32,.97);
+  z-index:700; flex-direction:column; align-items:center;
+  padding:24px 16px; overflow:hidden;
+}
+#treeOverlay.show { display:flex; }
+.tree-title {
+  font-family:var(--font-mono); font-size:clamp(13px,4vw,18px);
+  font-weight:600; color:var(--cyan); letter-spacing:3px;
+  margin-bottom:12px;
+}
+canvas#treeCanvas { border:1px solid var(--brd); border-radius:4px;
+  background:var(--bg); display:block; max-width:100%; }
+#treeInfo { margin-top:8px; font-family:var(--font-mono); font-size:9px;
+  color:var(--txt); text-align:center; }
+.overlay-close {
+  margin-top:12px; padding:9px 36px; background:rgba(0,212,232,.07);
+  border:1px solid var(--cyan); color:var(--cyan);
+  font-family:var(--font-mono); font-size:9px; letter-spacing:2px;
+  cursor:pointer; border-radius:4px; transition:all .2s;
+}
+.overlay-close:hover { background:rgba(0,212,232,.18); }
+
+/* Gen stats */
+#genStatsOverlay {
+  display:none; position:fixed; inset:0; background:rgba(11,17,32,.97);
+  z-index:750; flex-direction:column; align-items:center;
+  justify-content:center; padding:20px;
+}
+#genStatsOverlay.show { display:flex; }
+.gs-card { width:100%; max-width:420px; background:var(--panel2);
+  border:1px solid var(--brd); border-radius:6px; overflow:hidden; }
+.gs-hdr { padding:12px 16px; border-bottom:1px solid var(--brd);
+  display:flex; justify-content:space-between; align-items:center;
+  background:var(--bg2); }
+.gs-hdr span { font-family:var(--font-mono); font-size:10px;
+  letter-spacing:2px; color:var(--cyan); }
+.gs-close { background:transparent; border:1px solid var(--brd);
+  color:var(--txt); width:26px; height:26px; border-radius:3px;
+  cursor:pointer; font-size:11px; display:flex; align-items:center;
+  justify-content:center; }
+#gsContent { padding:14px 16px; }
+.gs-row { display:flex; justify-content:space-between; align-items:center;
+  padding:5px 0; border-bottom:1px solid rgba(255,255,255,.04);
+  font-family:var(--font-mono); font-size:9px; color:var(--txt); }
+.gsv { color:var(--hi); font-family:var(--font-mono); font-size:10px;
+  font-weight:600; }
+
+/* Rewind */
+#rewindPanel {
+  display:none; position:fixed; bottom:0; left:0; right:0; z-index:600;
+  background:var(--bg2); border-top:1px solid var(--brd);
+  padding:10px 16px; flex-direction:column; gap:6px;
+}
+.rw-top { display:flex; align-items:center; justify-content:space-between; }
+.rw-title { font-family:var(--font-mono); font-size:9px; letter-spacing:2px;
+  color:var(--cyan); }
+.rw-time { font-family:var(--font-mono); font-size:10px; color:var(--hi); }
+.rw-pct { color:var(--green); margin-left:6px; }
+.rw-back { padding:5px 12px; border:1px solid var(--cyan);
+  background:rgba(0,212,232,.08); color:var(--cyan);
+  font-family:var(--font-mono); font-size:8px; cursor:pointer;
+  border-radius:3px; }
+.rw-controls { display:flex; align-items:center; gap:6px; }
+.rw-btn { padding:4px 9px; border:1px solid var(--brd);
+  background:var(--panel); color:var(--txt); font-size:11px;
+  cursor:pointer; border-radius:3px; }
+#rewindSlider { -webkit-appearance:none; flex:1; height:4px;
+  background:var(--brd); border-radius:2px; outline:none; cursor:pointer; }
+#rewindSlider::-webkit-slider-thumb { -webkit-appearance:none; width:14px;
+  height:14px; border-radius:50%; background:var(--cyan); cursor:pointer; }
+
+::-webkit-scrollbar { width:3px; }
+::-webkit-scrollbar-thumb { background:var(--brd); border-radius:2px; }
+
+</style>
+</head>
+<body>
+
+<!-- CANVAS LAYERS -->
+<canvas id="cvBiome"></canvas>
+<canvas id="cvCells"></canvas>
+<canvas id="cvHud"></canvas>
+
+<!-- TOP BAR -->
+<div id="topbar">
+  <div style="display:flex;align-items:center;gap:8px;">
+    <div id="menuBtn" onclick="UI.toggleDrawer()"><span></span><span></span><span></span></div>
+    <div class="logo">ECO<span>SPHERE</span></div>
+  </div>
+  <div id="timeBox">
+    <span id="timeVal">00:00:00</span>
+    <span id="seasonBadge">[W] WIOSNA — ROK 1</span>
+  </div>
+  <div class="ts-group">
+    <button class="tsbtn active" id="ts-fast" onclick="setTimescale('fast')">PRZYSP.</button>
+    <button class="tsbtn" id="ts-realistic" onclick="setTimescale('realistic')">REALNY</button>
+  </div>
+</div>
+
+<!-- HUD STATS -->
+<div id="hudStats">
+  <div class="hs"><span class="hs-v c" id="hCells">0</span>KOM.</div>
+  <div class="hs"><span class="hs-v g" id="hSp">0</span>GAT.</div>
+  <div class="hs hs-hide"><span class="hs-v" id="hOrg">0</span>ORG.</div>
+  <div class="hs hs-hide"><span class="hs-v" id="hMut">0</span>MUT.</div>
+  <div class="hs"><span class="hs-v r" id="hExt">0</span>WYM.</div>
+  <div class="hs"><span class="hs-v y" id="hInt">0</span>INT.</div>
+  <div class="hs"><span class="hs-v" id="hK">2000</span>K</div>
+</div>
+
+<!-- TOOL BAR -->
+<div id="toolbar">
+  <div class="tbtn" id="t-select" onclick="UI.setTool('select')" title="Info [I]">i</div>
+  <div class="tbtn r" id="t-kill" onclick="UI.setTool('kill')" title="Zabij [X]">x</div>
+  <div class="tbtn on" id="t-paint" onclick="UI.setTool('paint')" title="Maluj strefy">.</div>
+  <div class="tbtn" id="t-barrier" onclick="UI.setTool('barrier')" title="Bariera geograficzna">|</div>
+  <div class="tbtn" onclick="WORLD.clearZones()" title="Wyczysc strefy">C</div>
+  <div class="tbtn" onclick="UI.showTree()" title="Drzewo ewolucji">T</div>
+  <div class="tbtn" onclick="UI.showGenStats()" title="Statystyki pokolen">S</div>
+  <div class="tbtn" onclick="UI.enterRewind()" title="Przewin">&lt;</div>
+  <div class="tbtn" id="turboBtn" onclick="toggleTurbo()" title="Turbo">-</div>
+  <div class="tbtn r" onclick="triggerExtinction()" title="Katastrofa" style="margin-top:6px">!</div>
+  <select id="zoneType" title="Typ strefy">
+    <option value="food">N</option>
+    <option value="tox">T</option>
+    <option value="hot">G</option>
+    <option value="cold">Z</option>
+    <option value="rad">R</option>
+  </select>
+  <div class="brush-row">
+    <input type="range" id="brushSize" min="4" max="40" value="14">
+    <span class="brush-lbl" id="brushSizeLbl">14</span>
+  </div>
+</div>
+
+<!-- ZOOM -->
+<div id="zoomCtrl">
+  <button class="zbtn" id="btnZoomIn">+</button>
+  <div id="zoomVal">22%</div>
+  <button class="zbtn" id="btnZoomOut">-</button>
+  <button class="zbtn" id="btnZoomFit" style="font-size:10px">[ ]</button>
+</div>
+
+<!-- PAUSED -->
+<div id="pausedBadge">PAUZA</div>
+
+<!-- EXTINCTION BANNER -->
+<div id="extinctionBanner"></div>
+
+<!-- TOOLTIP -->
+<div id="tip"></div>
+
+<!-- ZONE LEGEND -->
+<div id="zoneLegend">
+  <div class="zleg"><div class="zleg-dot" style="background:#2ec484"></div>N — Zywnos</div>
+  <div class="zleg"><div class="zleg-dot" style="background:#e5534b"></div>T — Toksyczna</div>
+  <div class="zleg"><div class="zleg-dot" style="background:#f5a623"></div>G — Goraca</div>
+  <div class="zleg"><div class="zleg-dot" style="background:#4d9ef7"></div>Z — Zimna</div>
+  <div class="zleg"><div class="zleg-dot" style="background:#9b8afb"></div>R — Radioaktywna</div>
+  <div class="zleg"><div class="zleg-dot" style="background:rgba(100,80,50,.8)"></div>| — Bariera</div>
+</div>
+
+<!-- BOTTOM CONTROLS -->
+<div id="quickCtrl">
+  <button class="qbtn active" id="sp1" onclick="setSpeed(1,'sp1')">1x</button>
+  <button class="qbtn" id="sp3" onclick="setSpeed(3,'sp3')">3x</button>
+  <button class="qbtn" id="sp8" onclick="setSpeed(8,'sp8')">8x</button>
+  <div class="qdiv"></div>
+  <button class="qbtn o" id="btnPause" onclick="togglePause()" disabled>|| PAUZA</button>
+  <button class="qbtn r" id="btnStop" onclick="stopSim()" disabled>[] STOP</button>
+</div>
+
+<!-- MOBILE BAR -->
+<div id="mobileBar">
+  <button class="mb-btn active" id="msp1" onclick="setSpeed(1,'msp1')"><span class="mb-ic">&gt;</span><span class="mb-lb">1x</span></button>
+  <button class="mb-btn" id="msp3" onclick="setSpeed(3,'msp3')"><span class="mb-ic">&gt;&gt;</span><span class="mb-lb">3x</span></button>
+  <button class="mb-btn" id="msp8" onclick="setSpeed(8,'msp8')"><span class="mb-ic">!</span><span class="mb-lb">8x</span></button>
+  <button class="mb-btn o" id="mbPause" onclick="togglePause()" disabled><span class="mb-ic">||</span><span class="mb-lb">PAUZA</span></button>
+  <button class="mb-btn r" id="mbStop" onclick="stopSim()" disabled><span class="mb-ic">[]</span><span class="mb-lb">STOP</span></button>
+</div>
+
+<!-- RIGHT PANEL -->
+<div id="rightPanel">
+  <!-- Live populacja -->
+  <div class="rp-section">
+    <div class="rp-hdr">POPULACJA — LIVE</div>
+    <canvas id="liveChartCanvas" width="236" height="90"></canvas>
+  </div>
+
+  <!-- Geny — średnie wartości w populacji -->
+  <div class="rp-section">
+    <div class="rp-hdr">SREDNIE GENOW</div>
+    <div id="geneBars">
+      <!-- generowane przez JS -->
+      <div class="gene-bar-row"><div class="gene-bar-lbl"><span>lD</span><span id="gv-lD">0%</span></div><div class="gene-bar-bg"><div class="gene-bar-fill" id="gb-lD" style="width:0%"></div></div></div>
+      <div class="gene-bar-row"><div class="gene-bar-lbl"><span>hunt</span><span id="gv-hunt">0%</span></div><div class="gene-bar-bg"><div class="gene-bar-fill" id="gb-hunt" style="width:0%"></div></div></div>
+      <div class="gene-bar-row"><div class="gene-bar-lbl"><span>decomp</span><span id="gv-decomp">0%</span></div><div class="gene-bar-bg"><div class="gene-bar-fill" id="gb-decomp" style="width:0%"></div></div></div>
+      <div class="gene-bar-row"><div class="gene-bar-lbl"><span>brain</span><span id="gv-brain">0%</span></div><div class="gene-bar-bg"><div class="gene-bar-fill" id="gb-brain" style="width:0%"></div></div></div>
+      <div class="gene-bar-row"><div class="gene-bar-lbl"><span>tR</span><span id="gv-tR">0%</span></div><div class="gene-bar-bg"><div class="gene-bar-fill" id="gb-tR" style="width:0%"></div></div></div>
+      <div class="gene-bar-row"><div class="gene-bar-lbl"><span>rR</span><span id="gv-rR">0%</span></div><div class="gene-bar-bg"><div class="gene-bar-fill" id="gb-rR" style="width:0%"></div></div></div>
+      <div class="gene-bar-row"><div class="gene-bar-lbl"><span>hR</span><span id="gv-hR">0%</span></div><div class="gene-bar-bg"><div class="gene-bar-fill" id="gb-hR" style="width:0%"></div></div></div>
+      <div class="gene-bar-row"><div class="gene-bar-lbl"><span>comm</span><span id="gv-comm">0%</span></div><div class="gene-bar-bg"><div class="gene-bar-fill" id="gb-comm" style="width:0%"></div></div></div>
+    </div>
+  </div>
+
+  <!-- Env indicators -->
+  <div class="rp-section">
+    <div class="rp-hdr">SRODOWISKO</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;">
+      <div style="background:var(--bg);border:1px solid var(--brd);border-radius:3px;padding:5px 6px;text-align:center;">
+        <div id="eT" style="font-size:11px;">22C</div>
+        <div style="font-family:var(--font-mono);font-size:7px;color:var(--txt);margin-top:2px;">TEMP</div>
+      </div>
+      <div style="background:var(--bg);border:1px solid var(--brd);border-radius:3px;padding:5px 6px;text-align:center;">
+        <div id="eL" style="font-size:11px;">70%</div>
+        <div style="font-family:var(--font-mono);font-size:7px;color:var(--txt);margin-top:2px;">SWIATLO</div>
+      </div>
+      <div style="background:var(--bg);border:1px solid var(--brd);border-radius:3px;padding:5px 6px;text-align:center;">
+        <div id="eP" style="font-size:11px;">7.2</div>
+        <div style="font-family:var(--font-mono);font-size:7px;color:var(--txt);margin-top:2px;">pH</div>
+      </div>
+      <div style="background:var(--bg);border:1px solid var(--brd);border-radius:3px;padding:5px 6px;text-align:center;">
+        <div id="eX" style="font-size:11px;">0%</div>
+        <div style="font-family:var(--font-mono);font-size:7px;color:var(--txt);margin-top:2px;">TOKSYNY</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Species list -->
+  <div class="rp-section" style="padding-bottom:4px;flex-shrink:0;">
+    <div class="rp-hdr">GATUNKI</div>
+  </div>
+  <div id="spListWrap">
+    <div id="spList"></div>
+  </div>
+
+  <!-- Log -->
+  <div id="logWrap">
+    <div class="log-hdr">LOG</div>
+    <div id="logLines"></div>
+  </div>
+</div>
+
+<!-- BACKDROP -->
+<div id="backdrop" onclick="UI.toggleDrawer()"></div>
+
+<!-- DRAWER -->
+<div id="drawer">
+  <div id="drawerHead">
+    <h2>KONFIGURACJA</h2>
+    <div id="closeDrawer" onclick="UI.toggleDrawer()">&#x2715;</div>
+  </div>
+  <div class="dtabs">
+    <div class="dtab on" onclick="UI.switchTab('cell',this)">KOMORKA</div>
+    <div class="dtab" onclick="UI.switchTab('env',this)">SRODOW.</div>
+    <div class="dtab" onclick="UI.switchTab('ctrl',this)">STEROW.</div>
+  </div>
+  <div class="dbody">
+    <div id="tab-cell" class="tab on">
+      <div class="sec">
+        <div class="sec-t">PRESETY</div>
+        <div class="presets">
+          <div class="pbtn sel" onclick="applyPreset('balanced',this)">ZROWNOWAZONA</div>
+          <div class="pbtn" onclick="applyPreset('fragile',this)">KRUCHA</div>
+          <div class="pbtn" onclick="applyPreset('aggressive',this)">AGRESYWNA</div>
+          <div class="pbtn" onclick="applyPreset('slow',this)">POWOLNA</div>
+          <div class="pbtn" onclick="applyPreset('chaos',this)">CHAOS</div>
+        </div>
+      </div>
+      <div id="pvWrap">
+        <canvas id="pvc" width="84" height="84"></canvas>
+        <div id="pvStats"></div>
+      </div>
+      <div class="sec">
+        <div class="sec-t">PARAMETRY</div>
+        <div class="drow"><div class="dlbl">CZAS ZYCIA<span class="dv" id="dvLife">600 t</span></div>
+          <input type="range" id="cfgLife" min="100" max="2000" value="600" step="50" oninput="cfgUp()"></div>
+        <div class="drow"><div class="dlbl">REPRODUKCJA<span class="dv" id="dvRep">0.70</span></div>
+          <input type="range" id="cfgRep" min="0.1" max="1.5" value="0.7" step="0.05" class="g" oninput="cfgUp()"></div>
+        <div class="drow"><div class="dlbl">MUTACJE<span class="dv" id="dvMut">2.0%</span></div>
+          <input type="range" id="cfgMut" min="0.1" max="30" value="2" step="0.5" class="o" oninput="cfgUp()"></div>
+        <div class="drow"><div class="dlbl">RUCHLIWOSC<span class="dv" id="dvSpd">0.70</span></div>
+          <input type="range" id="cfgSpd" min="0.1" max="2.5" value="0.7" step="0.1" class="g" oninput="cfgUp()"></div>
+        <div class="drow"><div class="dlbl">ROZMIAR<span class="dv" id="dvSz">5.0 px</span></div>
+          <input type="range" id="cfgSize" min="3" max="14" value="5" step="0.5" oninput="cfgUp()"></div>
+        <div class="drow"><div class="dlbl">MAX ENERGIA<span class="dv" id="dvEne">120</span></div>
+          <input type="range" id="cfgEne" min="40" max="300" value="120" step="10" class="g" oninput="cfgUp()"></div>
+        <div class="drow"><div class="dlbl">LACZENIE<span class="dv" id="dvOrg">12%</span></div>
+          <input type="range" id="cfgOrg" min="0" max="50" value="12" step="1" oninput="cfgUp()"></div>
+        <div class="drow"><div class="dlbl">ODPORNOSC T<span class="dv" id="dvHeat">0.60</span></div>
+          <input type="range" id="cfgHeat" min="0.1" max="1.0" value="0.6" step="0.05" class="o" oninput="cfgUp()"></div>
+      </div>
+      <button id="startBtn" onclick="startSim()">&#x25BA; ROZPOCZNIJ EKSPERYMENT</button>
+    </div>
+
+    <div id="tab-env" class="tab">
+      <div class="sec">
+        <div class="sec-t">WARUNKI GLOBALNE</div>
+        <div class="drow"><div class="dlbl">TEMPERATURA<span class="dv" id="lTmp">22C</span></div>
+          <input type="range" id="sTemp" min="0" max="80" value="22" class="o"></div>
+        <div class="drow"><div class="dlbl">OSWIETLENIE<span class="dv" id="lLgt">70%</span></div>
+          <input type="range" id="sLight" min="0" max="100" value="70" class="g"></div>
+        <div class="drow"><div class="dlbl">pH<span class="dv" id="lPh">7.2</span></div>
+          <input type="range" id="sPh" min="40" max="90" value="72"></div>
+        <div class="drow"><div class="dlbl">TOKSYCZNOSC<span class="dv" id="lTox">0%</span></div>
+          <input type="range" id="sTox" min="0" max="100" value="0" class="r"></div>
+        <div class="drow"><div class="dlbl">SKLADNIKI ODZ.<span class="dv" id="lNut">80%</span></div>
+          <input type="range" id="sNut" min="10" max="100" value="80" class="g"></div>
+        <div class="drow"><div class="dlbl">PROMIENIOWANIE<span class="dv" id="lRad">1%</span></div>
+          <input type="range" id="sRad" min="0" max="100" value="1" class="r"></div>
+        <div class="drow"><div class="dlbl">CISNIENIE OSM.<span class="dv" id="lOsm">48%</span></div>
+          <input type="range" id="sOsm" min="0" max="100" value="48"></div>
+      </div>
+      <div class="sec">
+        <div class="sec-t">SEZONY</div>
+        <div class="toggle-row">
+          <span class="toggle-lbl">SEZONOWOSC</span>
+          <label class="sw"><input type="checkbox" id="seasonToggle" onchange="SEASON.setMode(this.checked?'fast':'off')">
+          <span class="sw-track"></span><span class="sw-thumb"></span></label>
+        </div>
+        <div class="drow"><div class="dlbl">DLUGOSC ROKU<span class="dv" id="dvYear">60s</span></div>
+          <input type="range" id="cfgYear" min="20" max="300" value="60" step="10"
+            oninput="document.getElementById('dvYear').textContent=this.value+'s'"></div>
+      </div>
+    </div>
+
+    <div id="tab-ctrl" class="tab">
+      <div class="sec">
+        <div class="sec-t">STEROWANIE</div>
+        <button class="dbtn" onclick="startSim()">&#x25BA; NOWY EKSPERYMENT</button>
+        <button class="dbtn o" id="dPause" onclick="togglePause()" disabled>|| PAUZA / WZNOW</button>
+        <button class="dbtn r" id="dStop" onclick="stopSim()" disabled>[] STOP + WYKRES</button>
+        <button class="dbtn r" onclick="triggerExtinction()" style="margin-top:4px">! KATASTROFA</button>
+      </div>
+      <div class="sec">
+        <div class="sec-t">PREDKOSC</div>
+        <div class="spd-row">
+          <button class="dbtn active" id="sp1d" onclick="setSpeed(1,'sp1d')" style="flex:1">1x</button>
+          <button class="dbtn" id="sp3d" onclick="setSpeed(3,'sp3d')" style="flex:1">3x</button>
+          <button class="dbtn" id="sp8d" onclick="setSpeed(8,'sp8d')" style="flex:1">8x</button>
+        </div>
+      </div>
+      <div class="sec">
+        <div class="sec-t">LEGENDA ROL</div>
+        <div class="tips" style="line-height:2.4">
+          <span style="color:#2ec484">[P]</span> Producent — fotosynteza<br>
+          <span style="color:#f5a623">[K]</span> Konsument — roslinozerca<br>
+          <span style="color:#e5534b">[D]</span> Drapieznik — poluje<br>
+          <span style="color:#9b8afb">[X]</span> Dekompozyt — rozklada<br>
+          <span style="color:#ff6b9d">[Z]</span> Pasozyt — kradnie energie<br>
+          <span style="color:#4d9ef7">[S]</span> Symbiont — wspolpraca<br>
+          <span style="color:#f0e040">[I]</span> Inteligentny — narzedzia<br>
+          <span style="color:#f0e040">[R]</span> Rozumny — modyfikuje swiat
+        </div>
+      </div>
+      <div class="sec">
+        <div class="sec-t">SKROTY</div>
+        <div class="tips">SPACJA=pauza | F=dopasuj<br>1/3/8=predkosc | +/-=zoom<br>SCROLL=zoom | DRAG=przesun</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- OVERLAYS -->
+<div id="treeOverlay">
+  <div class="tree-title">DRZEWO EWOLUCJI</div>
+  <canvas id="treeCanvas"></canvas>
+  <div id="treeInfo"></div>
+  <button class="overlay-close" onclick="document.getElementById('treeOverlay').classList.remove('show')">&#x2715; ZAMKNIJ</button>
+</div>
+
+<div id="genStatsOverlay">
+  <div class="gs-card">
+    <div class="gs-hdr">
+      <span>STATYSTYKI POKOLEN</span>
+      <button class="gs-close" onclick="document.getElementById('genStatsOverlay').classList.remove('show')">&#x2715;</button>
+    </div>
+    <div id="gsContent"></div>
+  </div>
+</div>
+
+<div id="rewindPanel">
+  <div class="rw-top">
+    <span class="rw-title">HISTORIA SYMULACJI</span>
+    <span class="rw-time"><span id="rewindTime">00:00</span><span class="rw-pct" id="rewindPct"> 0%</span></span>
+    <button class="rw-back" onclick="UI.exitRewind()">&#x25BA; WRÓC</button>
+  </div>
+  <div class="rw-controls">
+    <button class="rw-btn" onclick="UI.rewindStep(-20)">|&lt;</button>
+    <button class="rw-btn" onclick="UI.rewindStep(-1)">&lt;</button>
+    <input type="range" id="rewindSlider" min="0" max="299" value="0">
+    <button class="rw-btn" onclick="UI.rewindStep(1)">&gt;</button>
+    <button class="rw-btn" onclick="UI.rewindStep(20)">&gt;|</button>
+  </div>
+</div>
+
+<div id="chartOverlay">
+  <div class="cht-title">WYNIKI EKSPERYMENTU</div>
+  <div class="cht-stats" id="chtStats"></div>
+  <div id="chartWrap"><canvas id="chart"></canvas></div>
+  <div class="cht-legend" id="chtLegend"></div>
+  <button class="cclose" onclick="document.getElementById('chartOverlay').classList.remove('show')">&#x2715; ZAMKNIJ</button>
+</div>
+
+<script>
+// === genome.js ===
+// ================================================================
+// GENOME — DNA, mutacje SNP-style, specjacja
+// ================================================================
+
+const GENOME = (() => {
+
+  // 14 alleli — każdy niezależnie ewoluuje
+  // Pierwsze 10: metaboliczne. Ostatnie 4: zachowanie/mózg
+  const ALLELES = [
+    'spd',   // szybkość poruszania
+    'sz',    // rozmiar
+    'rep',   // tempo reprodukcji
+    'hR',    // odporność na temperaturę
+    'lD',    // zależność od światła (fotosynteza)
+    'tR',    // odporność na toksyny
+    'oR',    // odporność na osmozę
+    'rR',    // odporność na promieniowanie
+    'mut',   // tempo mutacji
+    'mxA',   // maksymalny wiek
+    'hunt',  // skłonność do polowania (predator gene)
+    'decomp',// skłonność do rozkładu martwych (decomposer)
+    'brain', // złożoność układu nerwowego (→ inteligencja)
+    'comm',  // zdolność komunikacji (sygnalizacja)
+  ];
+
+  // Progi ekologicznych ról — allele określają rolę
+  const ROLES = {
+    producer:  { cond: g => g.lD > 0.55 && g.hunt < 0.3,   name:'Producent',   color:'#69ff47', icon:'[P]' },
+    predator:  { cond: g => g.hunt > 0.60,                  name:'Drapieznik',  color:'#ff1744', icon:'[D]' },
+    consumer:  { cond: g => g.hunt > 0.30 && g.hunt <= 0.60,name:'Konsument',   color:'#ff9100', icon:'[K]' },
+    decomposer:{ cond: g => g.decomp > 0.55,                name:'Dekompozyt',  color:'#ce93d8', icon:'[X]' },
+    parasite:  { cond: g => g.hunt > 0.45 && g.sz < 0.3,   name:'Pasozyt',     color:'#ef9a9a', icon:'[Z]' },
+    symbiont:  { cond: g => g.comm > 0.60 && g.hunt < 0.25, name:'Symbiont',   color:'#80deea', icon:'[S]' },
+  };
+  // Domyślna rola — generalista
+  const ROLE_DEFAULT = { name:'Generalista', color:'#90a4ae', icon:'[G]' };
+
+  function getRole(g) {
+    for (const [key, role] of Object.entries(ROLES)) {
+      if (role.cond(g)) return { ...role, key };
+    }
+    return { ...ROLE_DEFAULT, key: 'generalist' };
+  }
+
+  // Próg inteligencji
+  const INTELLIGENCE_THRESH = 0.65;
+  const SENTIENT_THRESH     = 0.82;
+  function intelligenceLevel(g) {
+    if (g.brain >= SENTIENT_THRESH) return 'sentient';
+    if (g.brain >= INTELLIGENCE_THRESH) return 'intelligent';
+    return 'basic';
+  }
+
+  // Bazowy genom z konfiguracji
+  function base(CFG) {
+    return {
+      spd:   clamp(CFG.spd / 2.5),
+      sz:    clamp((CFG.size - 3) / 11),
+      rep:   clamp(CFG.rep / 1.5),
+      hR:    clamp(CFG.heat),
+      lD:    0.45,
+      tR:    0.30,
+      oR:    0.45,
+      rR:    0.25,
+      mut:   clamp(CFG.mut * 20),
+      mxA:   clamp(CFG.life / 1500),
+      hunt:  0.15 + Math.random() * 0.1,   // początkowo mały
+      decomp:0.10 + Math.random() * 0.1,
+      brain: 0.05 + Math.random() * 0.05,  // zaczyna od minimum
+      comm:  0.10 + Math.random() * 0.1,
+      // kolor
+      hue: Math.random(),
+      sat: 0.80,
+      lit: 0.58,
+    };
+  }
+
+  // DNA → statystyki liczbowe
+  function toStats(g, ene) {
+    const intel = intelligenceLevel(g);
+    // Inteligencja daje bonusy do reprodukcji, przeżycia, efektywności
+    const brainBonus = intel === 'sentient' ? 0.35 : intel === 'intelligent' ? 0.15 : 0;
+    return {
+      spd:    0.3  + g.spd * 2.2,
+      sz:     3    + g.sz  * 11,
+      rep:    0.15 + g.rep * 1.3  * (1 + brainBonus * 0.3),
+      hR:     clamp(g.hR),
+      lD:     clamp(g.lD),
+      tR:     clamp(g.tR),
+      oR:     clamp(g.oR),
+      rR:     clamp(g.rR),
+      mut:    0.002 + g.mut * 0.05,
+      maxAge: 150   + g.mxA * 1200 * (1 + brainBonus * 0.5),
+      maxE:   Math.max(50, 50 + g.rep * 240 + g.sz * 35),
+      energy: ene,
+      age:    0,
+      hunt:   g.hunt,
+      decomp: g.decomp,
+      brain:  g.brain,
+      comm:   g.comm,
+      intel,
+      brainBonus,
+    };
+  }
+
+  // Kolor z DNA
+  function color(g) {
+    // Rola wpływa na odcień bazowy
+    const role = getRole(g);
+    return `hsl(${Math.round(g.hue * 360)},${Math.round(g.sat*65+14)}%,${Math.round(g.lit*32+42)}%)`;
+  }
+
+  // ── MUTACJA SNP-STYLE ──
+  // Jeden podział = jedna szansa na mutację jednego allelu
+  // Zmiana jest duża i natychmiastowa (SNP), nie ciągłe dryfy
+  function mutate(g, radBoost) {
+    const d = { ...g };
+    const prob = 0.022 + d.mut * 0.055 + radBoost * 0.08;
+    if (Math.random() > prob) return { g: d, changed: false };
+
+    // Wybierz allel do mutacji (weighted — metaboliczne częściej)
+    const weights = [3,3,3,2,2,2,2,2,3,2, 1,1,0.5,0.5]; // hunt/brain mutują rzadziej
+    const total = weights.reduce((a,b)=>a+b,0);
+    let rnd = Math.random() * total, idx = 0;
+    for (let i = 0; i < weights.length; i++) {
+      rnd -= weights[i]; if (rnd <= 0) { idx = i; break; }
+    }
+    const key = ALLELES[idx];
+
+    // Typ mutacji
+    const r = Math.random();
+    let delta, type;
+    if (r < 0.04) {
+      // 4% korzystna
+      const toward = d[key] < 0.5 ? 1 : -1;
+      delta = toward * (0.08 + Math.random() * 0.14);
+      type = 'beneficial';
+    } else if (r < 0.22) {
+      // 18% szkodliwa
+      delta = (Math.random()<0.5?1:-1) * (0.06 + Math.random() * 0.16);
+      type = 'harmful';
+    } else {
+      // 78% neutralna — ale wciąż duży SNP-skok
+      delta = (Math.random()<0.5?1:-1) * (0.02 + Math.random() * 0.05);
+      type = 'neutral';
+    }
+
+    const before = d[key];
+    d[key] = clamp(d[key] + delta);
+    const actual = d[key] - before;
+
+    // Kolor reaguje wyraźnie na mutację
+    d.hue = (d.hue + actual * 2.8 + 1) % 1;
+    d.sat = clamp(d.sat + actual * 0.45, 0.12, 1);
+    d.lit = clamp(d.lit + actual * 0.22, 0.40, 0.78);
+
+    return { g: d, changed: true, type, key, delta: actual };
+  }
+
+  // ── SPECJACJA przez forkDNA ──
+  // SUB_THRESH: podgatunek (fork NIE resetuje się)
+  // SP_THRESH:  nowy gatunek (fork resetuje się)
+  const SUB_THRESH = 0.095;
+  const SP_THRESH  = 0.210;
+
+  function genomeDist(a, b) {
+    let s = 0;
+    for (const k of ALLELES) s += (a[k] - b[k])**2;
+    const dh = Math.min(Math.abs(a.hue-b.hue), 1-Math.abs(a.hue-b.hue));
+    s += dh*dh * 2;
+    return Math.sqrt(s / (ALLELES.length + 1));
+  }
+
+  function clamp(v, lo=0, hi=1) { return Math.max(lo, Math.min(hi, v)); }
+
+  return {
+    ALLELES, ROLES, ROLE_DEFAULT,
+    getRole, intelligenceLevel,
+    INTELLIGENCE_THRESH, SENTIENT_THRESH,
+    base, toStats, color, mutate,
+    SUB_THRESH, SP_THRESH, genomeDist,
+    clamp,
+  };
+})();
+
+// Global clamp alias
+const clamp = GENOME.clamp;
+
+// === world.js ===
+// WORLD — mapa, biomy lokalne jako kafelki, kamera, strefy
+const WORLD = (() => {
+  const W = 8000, H = 6000;
+  let cam = { x: W/2, y: H/2, zoom: 0.22, minZ: 0.06, maxZ: 4.0 };
+  let dragging = false, dragStart = null, camStart = null;
+
+  const BIOME_TYPES = [
+    { key:'tropical',  name:'Tropikalny',   color:'rgba(15,60,30,0.70)',  border:'#1a5a32', light:92, temp:31, nut:88, tox:0  },
+    { key:'temperate', name:'Umiarkowany',  color:'rgba(12,35,60,0.70)',  border:'#1a3a58', light:68, temp:18, nut:72, tox:0  },
+    { key:'polar',     name:'Polarny',      color:'rgba(18,25,55,0.70)',  border:'#1e2e5a', light:28, temp:-4, nut:35, tox:0  },
+    { key:'desert',    name:'Pustynny',     color:'rgba(55,32,8,0.70)',   border:'#3a2208', light:95, temp:45, nut:20, tox:5  },
+    { key:'deep',      name:'Glebinowy',    color:'rgba(5,25,28,0.70)',   border:'#082820', light:3,  temp:3,  nut:55, tox:8  },
+    { key:'hydro',     name:'Hydrotermalne',color:'rgba(50,18,5,0.70)',   border:'#2a1208', light:0,  temp:88, nut:92, tox:45 },
+    { key:'volcanic',  name:'Wulkaniczne',  color:'rgba(48,8,8,0.70)',    border:'#2a0808', light:10, temp:70, nut:25, tox:65 },
+    { key:'ocean',     name:'Oceaniczny',   color:'rgba(5,20,48,0.70)',   border:'#081832', light:55, temp:15, nut:65, tox:2  },
+  ];
+
+  const BIOME_TILE = 220;
+  let biomeGrid = null;
+
+  function generateBiomes(seed) {
+    const cols = Math.ceil(W / BIOME_TILE) + 1;
+    const rows = Math.ceil(H / BIOME_TILE) + 1;
+    let s = seed || 12345;
+    const rnd = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 0xffffffff; };
+
+    // Etap 1: bazowa siatka
+    const raw = [];
+    for (let row = 0; row < rows; row++) {
+      raw[row] = [];
+      for (let col = 0; col < cols; col++) {
+        const ny = row / rows;
+        const latDist = Math.abs(ny - 0.5) * 2;
+        let base = latDist < 0.22 ? 0 : latDist < 0.55 ? 1 : 2;
+        const n = rnd();
+        if (n < 0.04) base = 3;
+        else if (n < 0.07 && ny > 0.65) base = 4;
+        else if (n < 0.09 && latDist < 0.35) base = 5;
+        else if (n < 0.11) base = 6;
+        else if (ny > 0.72 && latDist < 0.28) base = 7;
+        raw[row][col] = base;
+      }
+    }
+    // Etap 2: wygładzanie 2x
+    let grid = raw;
+    for (let pass = 0; pass < 2; pass++) {
+      const next = grid.map(r => [...r]);
+      for (let row = 1; row < rows-1; row++) {
+        for (let col = 1; col < cols-1; col++) {
+          const counts = new Array(BIOME_TYPES.length).fill(0);
+          for (let dr = -1; dr <= 1; dr++)
+            for (let dc = -1; dc <= 1; dc++)
+              counts[grid[row+dr]?.[col+dc] ?? 0]++;
+          next[row][col] = counts.indexOf(Math.max(...counts));
+        }
+      }
+      grid = next;
+    }
+    biomeGrid = grid;
+  }
+
+  function getBiomeAt(wx, wy) {
+    if (!biomeGrid) generateBiomes();
+    const col = Math.max(0, Math.min((biomeGrid[0]?.length||1)-1, Math.floor(wx/BIOME_TILE)));
+    const row = Math.max(0, Math.min(biomeGrid.length-1, Math.floor(wy/BIOME_TILE)));
+    return BIOME_TYPES[biomeGrid[row]?.[col] ?? 0];
+  }
+
+  let zones = [];
+  const ZONE_CFG = {
+    tox:    { col:'rgba(229,83,75,.24)',  dtox:55,dfood:0, dhot:0, dcold:0, drad:0  },
+    food:   { col:'rgba(46,196,132,.20)', dtox:0, dfood:45,dhot:0, dcold:0, drad:0  },
+    hot:    { col:'rgba(245,166,35,.22)', dtox:0, dfood:0, dhot:35,dcold:0, drad:0  },
+    cold:   { col:'rgba(77,158,247,.20)', dtox:0, dfood:0, dhot:0, dcold:35,drad:0  },
+    rad:    { col:'rgba(155,138,251,.22)',dtox:0, dfood:0, dhot:0, dcold:0, drad:50 },
+    barrier:{ col:'rgba(100,80,50,.45)', isBarrier:true },
+  };
+
+  function zoneAt(wx, wy) {
+    let r = {dtox:0,dfood:0,dhot:0,dcold:0,drad:0,blocked:false};
+    for (const z of zones) {
+      if (z.type==='barrier') {
+        if (wx>=z.x&&wx<=z.x2&&wy>=z.y&&wy<=z.y2) r.blocked=true;
+        continue;
+      }
+      const d = Math.sqrt((wx-z.x)**2+(wy-z.y)**2);
+      if (d>=z.r) continue;
+      const st = 1-d/z.r, c = ZONE_CFG[z.type];
+      r.dtox+=st*c.dtox; r.dfood+=st*c.dfood;
+      r.dhot+=st*c.dhot; r.dcold+=st*c.dcold; r.drad+=st*c.drad;
+    }
+    return r;
+  }
+
+  function screenToWorld(sx, sy, canvas) {
+    const rc = canvas.getBoundingClientRect();
+    return {
+      x: cam.x + ((sx-rc.left)*(canvas.width/rc.width)  - canvas.width/2)  / cam.zoom,
+      y: cam.y + ((sy-rc.top) *(canvas.height/rc.height) - canvas.height/2) / cam.zoom,
+    };
+  }
+  function worldToScreen(wx, wy, canvas) {
+    return { x:(wx-cam.x)*cam.zoom+canvas.width/2, y:(wy-cam.y)*cam.zoom+canvas.height/2 };
+  }
+  function isVisible(wx, wy, r, canvas) {
+    const s = worldToScreen(wx,wy,canvas);
+    const sr = r*cam.zoom;
+    return s.x+sr>0&&s.x-sr<canvas.width&&s.y+sr>0&&s.y-sr<canvas.height;
+  }
+
+  function renderBackground(ctx, canvas) {
+    if (!biomeGrid) generateBiomes();
+    const cw=canvas.width, ch=canvas.height;
+    ctx.fillStyle='#0b1120'; ctx.fillRect(0,0,cw,ch);
+
+    const tl = screenToWorld(0,0,canvas), br = screenToWorld(cw,ch,canvas);
+    const cols = biomeGrid[0]?.length||1, rows = biomeGrid.length;
+    const cs = Math.max(0,Math.floor(tl.x/BIOME_TILE));
+    const ce = Math.min(cols, Math.ceil(br.x/BIOME_TILE)+1);
+    const rs = Math.max(0,Math.floor(tl.y/BIOME_TILE));
+    const re = Math.min(rows, Math.ceil(br.y/BIOME_TILE)+1);
+
+    for (let row=rs; row<re; row++) {
+      for (let col=cs; col<ce; col++) {
+        const b = BIOME_TYPES[biomeGrid[row]?.[col]??0];
+        const sx=(col*BIOME_TILE-cam.x)*cam.zoom+cw/2;
+        const sy=(row*BIOME_TILE-cam.y)*cam.zoom+ch/2;
+        const sw=BIOME_TILE*cam.zoom+1.5;
+        ctx.fillStyle=b.color; ctx.fillRect(sx,sy,sw,sw);
+      }
+    }
+
+    // Siatka
+    if (cam.zoom > 0.12) {
+      const g=400, sx0=Math.floor(tl.x/g)*g, sy0=Math.floor(tl.y/g)*g;
+      ctx.strokeStyle='rgba(77,158,247,0.05)'; ctx.lineWidth=1;
+      for (let wx=sx0;wx<br.x;wx+=g){const sx=(wx-cam.x)*cam.zoom+cw/2;ctx.beginPath();ctx.moveTo(sx,0);ctx.lineTo(sx,ch);ctx.stroke();}
+      for (let wy=sy0;wy<br.y;wy+=g){const sy=(wy-cam.y)*cam.zoom+ch/2;ctx.beginPath();ctx.moveTo(0,sy);ctx.lineTo(cw,sy);ctx.stroke();}
+    }
+
+    // Etykiety biome przy zoom > 0.20
+    if (cam.zoom > 0.20) {
+      const fs = Math.round(Math.min(11, 9*cam.zoom/0.4));
+      ctx.font=`${fs}px "JetBrains Mono"`;
+      ctx.textAlign='center';
+      for (let row=rs; row<re; row+=2) {
+        for (let col=cs; col<ce; col+=2) {
+          const b = BIOME_TYPES[biomeGrid[row]?.[col]??0];
+          const sx=(col*BIOME_TILE+BIOME_TILE-cam.x)*cam.zoom+cw/2;
+          const sy=(row*BIOME_TILE+BIOME_TILE-cam.y)*cam.zoom+ch/2;
+          ctx.fillStyle='rgba(139,160,190,0.28)';
+          ctx.fillText(b.name, sx, sy);
+        }
+      }
+    }
+
+    // Granica
+    const tls=worldToScreen(0,0,canvas), brs=worldToScreen(W,H,canvas);
+    ctx.strokeStyle='rgba(77,158,247,0.35)'; ctx.lineWidth=2;
+    ctx.strokeRect(tls.x,tls.y,brs.x-tls.x,brs.y-tls.y);
+  }
+
+  function renderZones(ctx, canvas) {
+    const cw=canvas.width, ch=canvas.height;
+    for (const z of zones) {
+      const cfg=ZONE_CFG[z.type]; if(!cfg) continue;
+      if (z.type==='barrier') {
+        const s1=worldToScreen(z.x,z.y,canvas), s2=worldToScreen(z.x2,z.y2,canvas);
+        ctx.fillStyle=cfg.col; ctx.fillRect(s1.x,s1.y,s2.x-s1.x,s2.y-s1.y);
+        ctx.strokeStyle='rgba(160,130,80,.55)'; ctx.lineWidth=1.5;
+        ctx.strokeRect(s1.x,s1.y,s2.x-s1.x,s2.y-s1.y);
+      } else {
+        const sc=worldToScreen(z.x,z.y,canvas), sr=z.r*cam.zoom;
+        if (sr<2) continue;
+        const gd=ctx.createRadialGradient(sc.x,sc.y,0,sc.x,sc.y,sr);
+        gd.addColorStop(0,cfg.col); gd.addColorStop(1,'transparent');
+        ctx.beginPath(); ctx.arc(sc.x,sc.y,sr,0,Math.PI*2);
+        ctx.fillStyle=gd; ctx.fill();
+      }
+    }
+  }
+
+  function zoomAt(f,cx,cy,canvas) {
+    const b=screenToWorld(cx,cy,canvas);
+    cam.zoom=Math.max(cam.minZ,Math.min(cam.maxZ,cam.zoom*f));
+    const a=screenToWorld(cx,cy,canvas);
+    cam.x+=b.x-a.x; cam.y+=b.y-a.y;
+    cam.x=Math.max(0,Math.min(W,cam.x)); cam.y=Math.max(0,Math.min(H,cam.y));
+    const zv=document.getElementById('zoomVal'); if(zv) zv.textContent=Math.round(cam.zoom*100)+'%';
+  }
+  function zoomIn(cv)  { zoomAt(1.30, cv.width/2, cv.height/2, cv); }
+  function zoomOut(cv) { zoomAt(0.77, cv.width/2, cv.height/2, cv); }
+  function zoomFit(cv) {
+    // Cały ekran - mapa wypełnia canvas w 96%
+    cam.zoom = Math.min(cv.width / W, cv.height / H) * 0.96;
+    cam.x = W/2; cam.y = H/2;
+    const zv=document.getElementById('zoomVal'); if(zv) zv.textContent=Math.round(cam.zoom*100)+'%';
+  }
+  function startDrag(sx,sy) { dragging=true; dragStart={x:sx,y:sy}; camStart={x:cam.x,y:cam.y}; }
+  function moveDrag(sx,sy) {
+    if(!dragging) return;
+    cam.x=camStart.x-(sx-dragStart.x)/cam.zoom;
+    cam.y=camStart.y-(sy-dragStart.y)/cam.zoom;
+    cam.x=Math.max(0,Math.min(W,cam.x)); cam.y=Math.max(0,Math.min(H,cam.y));
+  }
+  function endDrag() { dragging=false; }
+  function addZone(wx,wy,type,r) { if(zones.length>200)zones.splice(0,1); zones.push({x:wx,y:wy,r:r||130,type}); }
+  function addBarrier(wx1,wy1,wx2,wy2) { zones.push({type:'barrier',x:Math.min(wx1,wx2),y:Math.min(wy1,wy2),x2:Math.max(wx1,wx2),y2:Math.max(wy1,wy2)}); }
+  function clearZones() { zones=zones.filter(z=>z.type==='barrier'); }
+  function clearAll()   { zones=[]; }
+  function randomPos()  { return {x:W*0.1+Math.random()*W*0.8, y:H*0.08+Math.random()*H*0.55}; }
+  function centerPos()  { return {x:W/2, y:H/2}; }
+  // Losowa pozycja ale z minimalnym odstępem od krawędzi
+  function scatterPos(i, total) {
+    // Rozsiej po całej mapie w siatce z losowym offsetem
+    const cols = Math.ceil(Math.sqrt(total * W/H));
+    const rows = Math.ceil(total / cols);
+    const col  = i % cols, row = Math.floor(i / cols);
+    const cellW = W * 0.85 / cols, cellH = H * 0.85 / rows;
+    return {
+      x: W * 0.075 + col * cellW + (Math.random() - 0.5) * cellW * 0.8,
+      y: H * 0.075 + row * cellH + (Math.random() - 0.5) * cellH * 0.8,
+    };
+  }
+
+  return { W,H,cam,BIOME_TYPES,ZONE_CFG,generateBiomes,getBiomeAt,zoneAt,
+    screenToWorld,worldToScreen,isVisible,renderBackground,renderZones,
+    zoomAt,zoomIn,zoomOut,zoomFit,startDrag,moveDrag,endDrag,
+    addZone,addBarrier,clearZones,clearAll,randomPos,centerPos,scatterPos,
+    get zones(){return zones;}, get dragging(){return dragging;} };
+})();
+
+// === season.js ===
+// ================================================================
+// SEASON — pory roku i klimat jak na Ziemi
+// Oś Y mapy = szerokość geograficzna (jak na Ziemi)
+// Pory roku wpływają na temp, światło, opady, dostępność pokarmu
+// ================================================================
+
+const SEASON = (() => {
+  // Czas trwania jednego roku (ms symulacji)
+  // Tryb realistyczny: 1 rok = 365 dni = długo
+  // Tryb przyspieszony: 1 rok = ~60s
+  const YEAR_DURATION = { realistic: 365*24*3600*1000, fast: 60000 };
+
+  let simYear   = 0;  // numer roku
+  let yearPhase = 0;  // [0..1] w ciągu roku
+  let mode      = 'fast';
+
+  const SEASONS = [
+    { name:'WIOSNA', icon:'[W]', color:'#a5d6a7' },
+    { name:'LATO',   icon:'[L]', color:'#fff59d' },
+    { name:'JESIEN', icon:'[J]', color:'#ffcc80' },
+    { name:'ZIMA',   icon:'[Z]', color:'#b3e5fc' },
+  ];
+
+  // Efekty sezonowe per szerokość geograficzna (0=równik, 1=biegun)
+  // Równik — mała zmienność sezonowa
+  // Bieguny — ogromna zmienność
+  function getSeasonEffects(yearPh, latFrac) {
+    // latFrac: 0=równik, 1=biegun
+    const seasonIdx = Math.floor(yearPh * 4) % 4;
+    const t = (yearPh * 4) % 1;
+    const next = (seasonIdx + 1) % 4;
+
+    // Amplituda zmian rośnie z szerokością geograficzną
+    const amp = 0.1 + latFrac * 0.9;
+
+    // Tabela efektów: [wiosna, lato, jesień, zima]
+    const TEMP_MOD   = [0.8, 1.3, 0.7, 0.2];   // mnożnik temperatury
+    const LIGHT_MOD  = [0.8, 1.2, 0.7, 0.3];   // mnożnik światła
+    const NUT_MOD    = [1.1, 1.3, 0.9, 0.4];   // mnożnik składników
+    const RAIN_MOD   = [1.2, 0.8, 1.0, 0.5];   // opady
+
+    const lerp = (arr) => arr[seasonIdx]*(1-t) + arr[next]*t;
+    // Interpoluj między 1.0 (brak efektu) a pełnym efektem wg amp
+    const blend = (v) => 1.0 + (v - 1.0) * amp;
+
+    return {
+      tempMod:  blend(lerp(TEMP_MOD)),
+      lightMod: blend(lerp(LIGHT_MOD)),
+      nutMod:   blend(lerp(NUT_MOD)),
+      rainMod:  blend(lerp(RAIN_MOD)),
+      season:   SEASONS[seasonIdx],
+      seasonIdx,
+      yearPhase: yearPh,
+    };
+  }
+
+  function tick(dtMs) {
+    const yearLen = YEAR_DURATION[mode];
+    yearPhase += dtMs / yearLen;
+    if (yearPhase >= 1) {
+      yearPhase -= 1;
+      simYear++;
+    }
+  }
+
+  function current() {
+    return getSeasonEffects(yearPhase, 0.4); // uśredniona szerok.
+  }
+
+  function getAtPos(wx, wy) {
+    const latFrac = Math.abs(wy / WORLD.H - 0.5) * 2;
+    return getSeasonEffects(yearPhase, latFrac);
+  }
+
+  function setMode(m) { mode = m; }
+  function getMode()  { return mode; }
+  function getYear()  { return simYear; }
+  function getPhase() { return yearPhase; }
+
+  // Aktualizuj badge w UI
+  function updateUI() {
+    const s = current();
+    const el = document.getElementById('seasonBadge');
+    if (el) el.textContent = s.season.icon + ' ' + s.season.name
+      + ' — ROK ' + (simYear + 1);
+  }
+
+  return { tick, current, getAtPos, setMode, getMode, getYear, getPhase, SEASONS, updateUI };
+})();
+
+// === env.js ===
+// ================================================================
+// ENV — środowisko globalne, dryf, katastrofy
+// ================================================================
+
+const ENV = (() => {
+  const E = { temp:22, light:70, ph:7.2, tox:0, nut:80, rad:1, osm:48 };
+
+  // Dryf środowiskowy
+  let driftTimer = 0;
+  const DRIFT_T = 18;  // co ile sekund sim jeden dryf
+  const DRIFT_PARAMS = [
+    { k:'temp',  min:5,  max:55, sl:'sTemp', lb:'lTmp', fmt:v=>Math.round(v)+'°C' },
+    { k:'light', min:20, max:95, sl:'sLight',lb:'lLgt', fmt:v=>Math.round(v)+'%'  },
+    { k:'osm',   min:25, max:75, sl:'sOsm',  lb:'lOsm', fmt:v=>Math.round(v)+'%'  },
+    { k:'nut',   min:50, max:95, sl:'sNut',  lb:'lNut', fmt:v=>Math.round(v)+'%'  },
+    { k:'ph',    min:5.5,max:8.5,sl:'sPh',   lb:'lPh',  fmt:v=>v.toFixed(1), scale:10 },
+  ];
+
+  // Wymierania masowe — prawdopodobieństwo per rok
+  const EXTINCTION_PROB_PER_YEAR = 0.12;
+
+  function applyDrift() {
+    const p = DRIFT_PARAMS[Math.floor(Math.random() * DRIFT_PARAMS.length)];
+    const dir = Math.random() < .5 ? 1 : -1;
+    const amt = 0.8 + Math.random() * 3.2;
+    if (p.scale) {
+      E[p.k] = Math.max(p.min, Math.min(p.max, E[p.k] + dir*amt/p.scale));
+      const sl = document.getElementById(p.sl); if (sl) sl.value = Math.round(E[p.k]*p.scale);
+      const lb = document.getElementById(p.lb); if (lb) lb.textContent = p.fmt(E[p.k]);
+    } else {
+      E[p.k] = Math.max(p.min, Math.min(p.max, E[p.k] + dir*amt));
+      const sl = document.getElementById(p.sl); if (sl) sl.value = Math.round(E[p.k]);
+      const lb = document.getElementById(p.lb); if (lb) lb.textContent = p.fmt(E[p.k]);
+    }
+    SIM.envVer++;
+    UI.logA(`<span style="color:#4dd0e1">[ENV]</span> ${p.k}${dir>0?'[+]':'[-]'}${p.fmt(E[p.k])}`);
+  }
+
+  function tick(dtS) {
+    driftTimer += dtS;
+    if (driftTimer >= DRIFT_T) {
+      driftTimer = 0;
+      applyDrift();
+    }
+
+    // Sprawdź masowe wymieranie (raz na rok)
+    const yearFrac = SEASON.getPhase();
+    if (yearFrac < 0.01 && SEASON.getYear() > 0 && Math.random() < EXTINCTION_PROB_PER_YEAR * dtS) {
+      const sev = 0.3 + Math.random() * 0.6;
+      SIM.massExtinction(sev);
+    }
+  }
+
+  function setParam(key, val) {
+    E[key] = val;
+    SIM.envVer++;
+    SIM.fitC.clear();
+  }
+
+  return { E, tick, applyDrift, setParam };
+})();
+
+// === sim.js ===
+// ================================================================
+// SIM — główny silnik symulacji ekosystemu
+// ================================================================
+
+const SIM = (() => {
+
+  // ── Stan ──
+  let cells = [], nextCellId = 1;
+  let species = {}, nextSpId = 1;
+  let orgs = [], nextOrgId = 1;
+  let deadPool = [];  // martwe komórki
+window._deadPool = deadPool;
+  let totalMuts = 0, totalExtinct = 0, totalBorn = 0;
+  let simTime = 0, simYear = 0;
+  let tickN = 0;
+
+  // ── Statystyki pokoleń ──
+  let genStats = {
+    gens:0, died:0, ageD:0, strvD:0,
+    ages:[], survR:0, failR:0,
+  };
+
+  // ── Historia ──
+  let history = [], lastHistMs = 0;
+  const HIST_INT = 3000;
+
+  // ── Rewind ──
+  const REWIND_MAX = 300, REWIND_EVERY = 10;
+  let rewindBuf = [], rewindTick = 0;
+
+  // ── Symbioza / Pasożytnictwo / Koewolucja ──
+  let symPairs  = new Map();
+  let paraPairs = new Map();
+  let coExist   = new Map();
+  let coExTick  = 0;
+  const COEX_EVERY = 50, COEX_R = 80;
+  const SYM_T = 18, PARA_T = 35;
+
+  // ── Inteligentne gatunki ──
+  let intelligentSpecies = new Set();  // spId tych które osiągnęły próg
+  let sentientSpecies    = new Set();  // spId z rozumem
+
+  // ── Imiona gatunków ──
+  const PREFIXES = ['Alpha','Beta','Gamma','Delta','Epsilon','Zeta','Eta','Theta',
+    'Iota','Kappa','Lambda','Mu','Nu','Xi','Omicron','Pi','Rho','Sigma','Tau',
+    'Upsilon','Phi','Chi','Psi','Omega','Proxima','Nexus','Vertex','Cipher',
+    'Lynx','Vega','Nova','Pulsar','Quasar','Hydra','Lyra','Corona','Cetus',
+    'Draco','Aries','Virgo','Orion','Cygnus','Helios','Kronos','Erebus',
+    'Photon','Qubit','Meson','Boson','Lepton','Hadron'];
+  let usedNames = new Set();
+  function getName() {
+    for (const n of PREFIXES) { if (!usedNames.has(n)) { usedNames.add(n); return n; } }
+    return 'SP-' + nextSpId;
+  }
+
+  // ── Spatial grid ──
+  const GSIZ = 80;
+  let grid = {};
+  function gKey(x, y) { return (x|0)+'_'+(y|0); }
+  function rebuildGrid() {
+    grid = {};
+    for (const c of cells) {
+      if (!c.alive) continue;
+      const k = gKey(Math.floor(c.x/GSIZ), Math.floor(c.y/GSIZ));
+      (grid[k] || (grid[k] = [])).push(c);
+    }
+  }
+  function nearby(c, r) {
+    const rg = Math.ceil(r/GSIZ) + 1;
+    const gx = Math.floor(c.x/GSIZ), gy = Math.floor(c.y/GSIZ);
+    const out = [];
+    for (let dx = -rg; dx <= rg; dx++)
+      for (let dy = -rg; dy <= rg; dy++) {
+        const a = grid[gKey(gx+dx, gy+dy)];
+        if (a) for (const x of a) out.push(x);
+      }
+    return out;
+  }
+  function d2(a, b) { return (a.x-b.x)**2 + (a.y-b.y)**2; }
+
+  // ── Fitness cache ──
+  let envVer = 0;
+  const fitC = new Map();
+
+  function fitness(c) {
+    const cv = fitC.get(c.id);
+    if (cv && cv.v === envVer) return cv.f;
+    const g = c.dna;
+    const z = WORLD.zoneAt(c.x, c.y);
+    const season = SEASON.getAtPos(c.x, c.y);
+    const biome  = WORLD.getBiomeAt(c.x, c.y);
+
+    // Efektywna temperatura: biom + sezon + strefy
+    const eTemp = clamp(
+      biome.temp * season.tempMod + z.dhot - z.dcold, -10, 100
+    );
+    const eTox  = clamp(biome.tox  + E.tox  + z.dtox, 0, 100);
+    const eRad  = clamp(E.rad + z.drad, 0, 100);
+    const eLight= clamp(biome.light * season.lightMod + E.light, 0, 100);
+
+    let f = 1.0;
+    // Temperatura (optimum 37°C dla większości, ale ewoluuje przez hR)
+    const optTemp = 20 + g.hR * 50;  // gen hR przesuwa optimum temperaturowe
+    const td = Math.abs(eTemp - optTemp) / 80;
+    f *= Math.max(0.01, 1 - td * (1.2 - g.hR));
+
+    // Światło — producenci potrzebują, inne gatunki mniej
+    if (g.lD > 0.5) {
+      f *= 0.7 + (eLight/100) * 0.6 * g.lD;
+    } else {
+      f *= 0.85 + (1 - eLight/100) * 0.1; // konsumenci wolą cień
+    }
+
+    // pH
+    const pd = Math.abs(E.ph - 7) / 7;
+    f *= Math.max(0.02, 1 - pd * 0.85);
+
+    // Toksyny
+    f *= Math.max(0.02, 1 - eTox/100 * (1 - g.tR * 0.92));
+
+    // Promieniowanie
+    f *= Math.max(0.02, 1 - eRad/100 * (1 - g.rR * 0.90));
+
+    // Osmoza
+    const od = Math.abs(E.osm - 50) / 50;
+    f *= Math.max(0.02, 1 - od * (1 - g.oR * 0.88));
+
+    // Inteligencja poprawia fitness we wszystkich warunkach
+    f *= 1 + c.stats.brainBonus * 0.25;
+
+    const val = Math.max(0.01, f);
+    fitC.set(c.id, { v: envVer, f: val });
+    return val;
+  }
+
+  function localNut(x, y) {
+    const biome  = WORLD.getBiomeAt(x, y);
+    const season = SEASON.getAtPos(x, y);
+    const z      = WORLD.zoneAt(x, y);
+    return clamp(biome.nut * season.nutMod + E.nut * 0.3 + z.dfood, 5, 100);
+  }
+  function localRad(x, y) {
+    return clamp(E.rad + WORLD.zoneAt(x, y).drad, 0, 100);
+  }
+
+  // ── TWORZENIE GATUNKÓW ──
+  function newSpecies(dna, parentId, isSub) {
+    const id   = nextSpId++;
+    const name = getName();
+    const par  = species[parentId];
+    const role = GENOME.getRole(dna);
+    species[id] = {
+      id, name, color: GENOME.color(dna), refDNA: { ...dna },
+      count:0, extinct:false, parent:parentId,
+      depth: (par?.depth||0) + 1, isSub,
+      label: isSub ? (par?.name||'?') + '.' + name : name,
+      born: simTime, role: role.key,
+      roleName: role.name, roleColor: role.color, roleIcon: role.icon,
+    };
+    UI.spDirty = true;
+    const tag = isSub
+      ? `<span style="color:#fff59d">[SUB]</span>`
+      : `<span style="color:#ce93d8">[SP]</span>`;
+    UI.logA(`${tag} <span style="color:${species[id].color}">${species[id].label}</span> ${role.icon}`);
+    return id;
+  }
+
+  function classifyOffspring(parentCell, childDNA) {
+    const fork = parentCell.forkDNA || species[parentCell.spId]?.refDNA || childDNA;
+    const dist = GENOME.genomeDist(childDNA, fork);
+    if (dist >= GENOME.SP_THRESH) {
+      const spId = newSpecies(childDNA, parentCell.spId, false);
+      return { spId, fork: childDNA };
+    }
+    if (dist >= GENOME.SUB_THRESH) {
+      newSpecies(childDNA, parentCell.spId, true);
+      return { spId: parentCell.spId, fork };
+    }
+    return { spId: parentCell.spId, fork };
+  }
+
+  // ── TWORZENIE KOMÓREK ──
+  function mkCell(x, y, spId, dna = null, ene = null) {
+    const g = dna ?? { ...species[spId].refDNA };
+    const s = GENOME.toStats(g, ene ?? CFG.ene);
+    const c = {
+      id: nextCellId++, x, y,
+      vx: (Math.random()-.5)*.4, vy: (Math.random()-.5)*.4,
+      spId, dna: g, stats: s,
+      orgId: null, alive: true,
+      divT: 0, ph: Math.random() * Math.PI * 2,
+      forkDNA: null, _repr: false,
+      // Zachowanie
+      target: null,   // cel (polowanie/jedzenie)
+      fear:   null,   // cel ucieczki
+      signal: 0,      // sygnał komunikacyjny [0..1]
+      toolZone: null, // strefa narzędziowa stworzona przez inteligentny gatunek
+      // Mózg — prosta sieć aktywacji
+      brainState: 0,
+    };
+    species[spId].count++;
+    totalBorn++;
+    return c;
+  }
+
+  // ── ZACHOWANIE — proste reguły ──
+  function updateBehavior(c, dtS) {
+    const g = c.dna;
+    const sp = c.stats;
+
+    // Komunikacja — sygnalizuj zagrożenie pobliskim współgatunkom
+    if (g.comm > 0.4 && tickN % 5 === 0) {
+      const danger = c.fear != null || sp.energy < sp.maxE * 0.25;
+      if (danger) {
+        const near = nearby(c, 120).filter(n => n.alive && n.spId === c.spId && n.id !== c.id);
+        for (const n of near.slice(0,8)) n.signal = Math.max(n.signal, g.comm);
+      }
+    }
+    c.signal = Math.max(0, c.signal - dtS * 2);
+
+    // Ucieczka od sygnału zagrożenia lub drapieżnika
+    if (c.signal > 0.5 || c.fear) {
+      // Uciekaj w przeciwnym kierunku od zagrożenia
+      if (c.fear) {
+        const dx = c.x - c.fear.x, dy = c.y - c.fear.y;
+        const l = Math.sqrt(dx*dx+dy*dy)||1;
+        c.vx += dx/l * sp.spd * 0.8;
+        c.vy += dy/l * sp.spd * 0.8;
+        if (d2(c, c.fear) > 200**2) c.fear = null;
+      }
+      return;
+    }
+
+    // Polowanie — drapieżniki szukają ofiar
+    if (g.hunt > 0.55 && sp.energy < sp.maxE * 0.6) {
+      if (!c.target || !c.target.alive) {
+        // Szukaj ofiary (inny gatunek, słabszy)
+        const prey = nearby(c, 150).filter(n =>
+          n.alive && n.spId !== c.spId &&
+          GENOME.getRole(n.dna).key !== 'predator' &&
+          n.stats.sz < sp.sz * 1.4
+        );
+        c.target = prey.length ? prey[0] : null;
+      }
+      if (c.target) {
+        const dx = c.target.x - c.x, dy = c.target.y - c.y;
+        const l = Math.sqrt(dx*dx+dy*dy)||1;
+        c.vx += dx/l * sp.spd * 0.6;
+        c.vy += dy/l * sp.spd * 0.6;
+        // Udany atak — jeśli dotykamy ofiary
+        if (d2(c, c.target) < (sp.sz + c.target.stats.sz + 2)**2) {
+          const stolen = Math.min(c.target.stats.energy, sp.sz * 2.5 * dtS * 12);
+          c.target.stats.energy -= stolen;
+          c.stats.energy = Math.min(sp.maxE, sp.energy + stolen * 0.75);
+          if (c.target.stats.energy <= 0) c.target.alive = false;
+          c.target = null;
+        }
+      }
+    }
+
+    // Szukanie jedzenia — roślinożercy kierują się ku pokarmowi
+    if (g.lD < 0.4 && g.hunt < 0.55 && g.decomp < 0.5 && sp.energy < sp.maxE * 0.5) {
+      // Szukaj martwych komórek lub bogatych stref
+      const zone = WORLD.zoneAt(c.x, c.y);
+      if (zone.dfood < 10) {
+        // Idź w losową stronę szukając jedzenia
+        c.vx += (Math.random()-.5) * 0.3;
+        c.vy += (Math.random()-.5) * 0.3;
+      }
+    }
+
+    // Rozkładacze — idą do martwych komórek
+    if (g.decomp > 0.5 && deadPool.length > 0 && sp.energy < sp.maxE * 0.7) {
+      const nearest = deadPool.reduce((a,b) => d2(c,a) < d2(c,b) ? a : b, deadPool[0]);
+      const dx = nearest.x - c.x, dy = nearest.y - c.y;
+      const l = Math.sqrt(dx*dx+dy*dy)||1;
+      c.vx += dx/l * sp.spd * 0.5;
+      c.vy += dy/l * sp.spd * 0.5;
+      if (d2(c, nearest) < (sp.sz + 6)**2) {
+        const gain = Math.min(nearest.energy, sp.sz * 3 * dtS * 10);
+        sp.energy = Math.min(sp.maxE, sp.energy + gain);
+        nearest.energy -= gain;
+        if (nearest.energy <= 0) deadPool.splice(deadPool.indexOf(nearest), 1);
+      }
+    }
+
+    // Inteligencja — narzędzia (modyfikacja środowiska)
+    if (sp.intel === 'intelligent' || sp.intel === 'sentient') {
+      if (!c.toolZone && Math.random() < 0.0005 * dtS * 60) {
+        // Stwórz lokalną strefę żywności (narzędziowa modyfikacja)
+        WORLD.addZone(c.x + (Math.random()-.5)*100, c.y + (Math.random()-.5)*100, 'food', 80);
+        UI.logA(`<span style="color:#fff59d">[NARZ]</span> ${species[c.spId]?.name} modyfikuje srodowisko`);
+        c.toolZone = true;
+      }
+    }
+  }
+
+  // ── TICK ──
+  function tick(dt) {
+    const dtS = dt / 1000;
+    tickN++;
+
+    if (tickN % 3 === 0) rebuildGrid();
+
+    // Dryf środowiskowy i sezonowość — deleguj do ENV
+    ENV.tick(dtS);
+    SEASON.tick(dt);
+    SEASON.updateUI();
+
+    // Dryf genetyczny
+    if (tickN % 300 === 0) applyDrift();
+
+    // Koewolucja i interakcje gatunkowe
+    if (++coExTick >= COEX_EVERY) {
+      coExTick = 0;
+      if (Object.keys(species).length >= 2) updateCoexistence(dtS * COEX_EVERY);
+    }
+    if (symPairs.size || paraPairs.size) applyBioInteractions(dtS);
+
+    // Presja populacyjna
+    const pop  = cells.length;
+    // Dynamiczny K — rośnie z inteligencją i czasem
+    const baseK  = CFG.capacity || 2000;
+    const intBonus = SIM.intelligentSpecies.size * 200;   // każdy inteligentny gatunek +200
+    const sentBonus= SIM.sentientSpecies.size    * 500;   // każdy rozumny +500
+    const timeBonus= Math.floor(SIM.simTime/300000) * 100; // co 5 min sim +100
+    const K = Math.min(8000, baseK + intBonus + sentBonus + timeBonus);
+    // Pokaż w HUD
+    if (tickN % 120 === 0) {
+      const el = document.getElementById('hK');
+      if (el) el.textContent = K;
+    }
+    const press = Math.max(0, pop / K - 1.0);
+
+    // Wyczyść martwe organizmy
+    for (let i = orgs.length-1; i >= 0; i--) {
+      const o = orgs[i], al = o.cells.filter(c => c.alive);
+      if (al.length < 2) { al.forEach(c => c.orgId = null); orgs.splice(i,1); }
+      else o.cells = al;
+    }
+
+    // Wyczyść dead pool
+    while (deadPool.length > 200) deadPool.shift();
+    window._deadPool = deadPool;
+
+    const born = [];
+    const snap = [...cells];
+
+    for (const c of snap) {
+      if (!c.alive) continue;
+      const s = c.stats;
+      const g = c.dna;
+
+      // Starzenie
+      s.age += dtS * 12;
+      const ageFrac = s.age / s.maxAge;
+      const senescence = Math.max(0, (ageFrac - 0.55) / 0.45);
+
+      // Fitness
+      const f = fitness(c);
+
+      // Zachowanie
+      updateBehavior(c, dtS);
+
+      // Sprawdź bariery
+      const zone = WORLD.zoneAt(c.x, c.y);
+      if (zone.blocked) {
+        // Odepnij od bariery
+        c.vx *= -1; c.vy *= -1;
+        c.x += c.vx * 2; c.y += c.vy * 2;
+        continue;
+      }
+
+      // Energia
+      const nut  = localNut(c.x, c.y);
+      const mEff = Math.max(0.05, 1 - senescence * 0.88);
+      const crowd = press * 0.5;
+
+      let gain = 0;
+      if (g.lD > 0.5) {
+        // Producenci — fotosynteza
+        const lightEff = clamp(WORLD.getBiomeAt(c.x,c.y).light * SEASON.getAtPos(c.x,c.y).lightMod / 100);
+        gain = lightEff * g.lD * 9.0 * f * mEff;
+      } else if (g.decomp > 0.5) {
+        // Rozkładacze — absorbują z martwych (obsługiwane w zachowaniu)
+        gain = (nut/100) * 3.5 * f * mEff;
+      } else {
+        // Reszta — absorbuje z otoczenia
+        gain = (nut/100) * 6.5 * f * mEff;
+      }
+      gain *= Math.max(0.1, 1 - crowd * 0.5);
+
+      // Drapieżniki bazują więcej na polowaniu niż na pasywnym gainie
+      if (g.hunt > 0.55) gain *= 0.4;
+
+      const drain = (0.4 + s.sz*0.05 + s.spd*0.07)
+                  + (1-f) * 2.8
+                  + senescence * 3.5
+                  + press * 0.3;
+
+      s.energy = Math.min(s.maxE, s.energy + (gain - drain) * dtS);
+
+      // Toksyny
+      const toxLoad = clamp((ENV.E.tox + WORLD.zoneAt(c.x,c.y).dtox) / 100);
+      if (toxLoad > 0.08) s.energy -= toxLoad * (1 - g.tR) * 0.05 * dtS * 12;
+
+      // Śmierć
+      if (ageFrac >= 1.0 || s.energy <= 0) {
+        c.alive = false;
+        fitC.delete(c.id);
+        species[c.spId].count--;
+        UI.spDirty = true;
+        genStats.died++;
+        genStats.ages.push(s.age);
+        if (genStats.ages.length > 500) genStats.ages.shift();
+        if (ageFrac >= 1.0) genStats.ageD++;
+        else                genStats.strvD++;
+        if (!c._repr)       genStats.failR++;
+
+        // Dodaj do dead pool dla rozkładaczy
+        if (Math.random() < 0.4) {
+          deadPool.push({ x:c.x, y:c.y, energy: s.sz * 15, spId: c.spId });
+        }
+
+        // Wymieranie gatunku
+        if (!species[c.spId].extinct && species[c.spId].count === 0) {
+          species[c.spId].extinct = true;
+          totalExtinct++;
+          UI.logA(`<span style="color:#ef9a9a">[!] WYMARCIE</span> ${species[c.spId].name}`);
+        }
+        continue;
+      }
+
+      // Ruch
+      if (c.orgId) {
+        const o = orgs.find(o => o.id === c.orgId);
+        if (o && o.cells[0] === c) {
+          c.vx += (Math.random()-.5)*.07; c.vy += (Math.random()-.5)*.07;
+          const len = Math.sqrt(c.vx**2+c.vy**2)||1;
+          const sp2 = s.spd * f * 24 * dtS;
+          c.vx = c.vx/len*sp2; c.vy = c.vy/len*sp2;
+          o.cells.slice(1).forEach((oc,i) => {
+            const t = o.cells[i];
+            oc.vx = (t.x-oc.x)*.16; oc.vy = (t.y-oc.y)*.16;
+          });
+        }
+      } else {
+        c.vx += (Math.random()-.5)*.10; c.vy += (Math.random()-.5)*.10;
+        const len = Math.sqrt(c.vx**2+c.vy**2)||1;
+        const sp2 = Math.min(s.spd * f * 33 * dtS, 2.5);
+        c.vx = c.vx/len*sp2; c.vy = c.vy/len*sp2;
+      }
+
+      // Granice świata
+      c.x = clamp(c.x + c.vx, s.sz, WORLD.W - s.sz);
+      c.y = clamp(c.y + c.vy, s.sz, WORLD.H - s.sz);
+      if (c.x <= s.sz || c.x >= WORLD.W-s.sz) c.vx *= -1;
+      if (c.y <= s.sz || c.y >= WORLD.H-s.sz) c.vy *= -1;
+      c.ph += dtS * 1.5;
+
+      // Sprawdź inteligencję
+      if (g.brain >= GENOME.INTELLIGENCE_THRESH && !intelligentSpecies.has(c.spId)) {
+        intelligentSpecies.add(c.spId);
+        UI.logA(`<span style="color:#fff59d">[INT]</span> ${species[c.spId]?.name} osiagnal inteligencje!`);
+      }
+      if (g.brain >= GENOME.SENTIENT_THRESH && !sentientSpecies.has(c.spId)) {
+        sentientSpecies.add(c.spId);
+        UI.logA(`<span style="color:#ffeb3b">[ROZUM]</span> ${species[c.spId]?.name} osiagnal ROZUM!`);
+      }
+
+      // Reprodukcja
+      if (ageFrac < 0.75 && press < 1.5 && s.energy > s.maxE * 0.52) {
+        c.divT += dtS;
+        const yB = Math.max(0, 1 - ageFrac/0.3);
+        const nut2 = localNut(c.x, c.y);
+        const divT = 4.5 / (s.rep * (f+0.12) * (1+yB*0.45)) / (nut2/100+0.3) * (1+press*1.1);
+        if (c.divT > divT) {
+          c.divT = 0;
+          if (!c._repr) { c._repr = true; genStats.survR++; genStats.gens++; }
+          const childE = s.energy * 0.40;
+          s.energy *= 0.60;
+
+          const radL = localRad(c.x, c.y);
+          const { g: childDNA, changed, type='none', key='', delta=0 } = GENOME.mutate(c.dna, radL/100);
+          const { spId: childSpId, fork: childFork } = changed
+            ? classifyOffspring(c, childDNA)
+            : { spId: c.spId, fork: c.forkDNA || c.dna };
+
+          const child = mkCell(c.x + (Math.random()-.5)*14, c.y + (Math.random()-.5)*14,
+                                childSpId, childDNA, childE);
+          child.forkDNA = childFork;
+
+          if (changed && type === 'beneficial')
+            UI.logA(`<span style="color:#69ff47">[+${key}]</span> ${species[c.spId]?.name}`);
+
+          born.push(child);
+          if (!c.orgId && Math.random() < CFG.orgTend) tryMerge(c);
+        }
+      }
+    }
+
+    cells.push(...born);
+    for (let i = cells.length-1; i >= 0; i--) {
+      if (!cells[i].alive) { fitC.delete(cells[i].id); cells.splice(i,1); }
+    }
+
+    if (tickN % 4 === 0) orgs.forEach(tryGrow);
+
+    // Historia wykresu
+    if (simTime - lastHistMs > HIST_INT) {
+      lastHistMs = simTime;
+      const sn = { time: simTime };
+      Object.values(species).forEach(sp => { sn[sp.id] = sp.count; });
+      history.push(sn);
+    }
+
+    // Rewind
+    if (tickN % REWIND_EVERY === 0) saveRewindFrame();
+  }
+
+  function tryMerge(c) {
+    const n = nearby(c, c.stats.sz*4).filter(x =>
+      x.alive && x.id !== c.id && x.spId === c.spId && !x.orgId &&
+      d2(x,c) < (c.stats.sz*4)**2
+    );
+    if (!n.length) return;
+    const o = { id: nextOrgId++, cells: [c, n[0]] };
+    orgs.push(o); c.orgId = o.id; n[0].orgId = o.id;
+  }
+  function tryGrow(o) {
+    if (o.cells.length >= 5) return;
+    const spId = o.cells[0].spId;
+    const nc = nearby(o.cells[0], o.cells[0].stats.sz*5)
+      .find(c => c.alive && c.spId === spId && !c.orgId &&
+                 o.cells.some(oc => d2(oc,c) < (oc.stats.sz*5)**2));
+    if (nc) { nc.orgId = o.id; o.cells.push(nc); }
+  }
+
+  // ── DRYF GENETYCZNY (Wright) ──
+  function applyDrift() {
+    for (const sp of Object.values(species)) {
+      if (sp.extinct || sp.count === 0) continue;
+      const pop = sp.count;
+      const str = Math.min(0.07, 0.45 / Math.sqrt(Math.max(1, pop)));
+      if (str < 0.004) continue;
+      const spCells = cells.filter(c => c.spId === sp.id);
+      if (!spCells.length) continue;
+      const k = GENOME.ALLELES[Math.floor(Math.random() * GENOME.ALLELES.length)];
+      const dir = Math.random() < .5 ? 1 : -1;
+      const amt = str * 0.5 + Math.random() * str;
+      for (const c of spCells) {
+        c.dna[k] = clamp(c.dna[k] + dir * amt);
+        c.dna.hue = (c.dna.hue + dir * amt * 0.3 + 1) % 1;
+        const ns = GENOME.toStats(c.dna, c.stats.energy);
+        ns.age = c.stats.age; c.stats = ns;
+      }
+      if (pop < 12) UI.logA(`<span style="color:#80deea">[DRYF]</span> ${sp.name}[${k}] N=${pop}`);
+      UI.spDirty = true;
+    }
+  }
+
+  // ── KOEWOLUCJA I INTERAKCJE ──
+  function updateCoexistence(dtS) {
+    const spIds = [...new Set(cells.map(c => c.spId))];
+    if (spIds.length < 2) return;
+    for (let i = 0; i < spIds.length; i++) for (let j = i+1; j < spIds.length; j++) {
+      const a = spIds[i], b = spIds[j];
+      const key = a < b ? `${a}_${b}` : `${b}_${a}`;
+      const sA = cells.filter(c => c.spId===a).slice(0,12);
+      const sB = cells.filter(c => c.spId===b).slice(0,12);
+      if (!sA.length || !sB.length) { coExist.delete(key); continue; }
+      let contacts = 0;
+      for (const ca of sA) if (sB.some(cb => d2(ca,cb) < COEX_R**2)) contacts++;
+      if (!contacts) { coExist.delete(key); continue; }
+      const rec = coExist.get(key) || { time: 0 };
+      rec.time += dtS * (contacts / sA.length);
+      coExist.set(key, rec);
+      const t = rec.time;
+      if (symPairs.get(a)===b || paraPairs.get(a)===b || paraPairs.get(b)===a) continue;
+      if (t >= PARA_T) {
+        const fA = sA.reduce((s,c)=>s+fitness(c),0)/sA.length;
+        const fB = sB.reduce((s,c)=>s+fitness(c),0)/sB.length;
+        const [para,host] = fA >= fB ? [a,b] : [b,a];
+        paraPairs.set(para, host);
+        UI.spDirty = true;
+        UI.logA(`<span style="color:#ef9a9a">[PAR]</span> ${species[para]?.name} -> ${species[host]?.name}`);
+        // Koewolucja: gospodarz ewoluuje odporność na pasożyta
+        const hostCells = cells.filter(c => c.spId === host);
+        for (const c of hostCells.slice(0,5)) {
+          c.dna.tR = clamp(c.dna.tR + 0.02);
+          fitC.delete(c.id);
+        }
+      } else if (t >= SYM_T) {
+        symPairs.set(a, b); symPairs.set(b, a);
+        UI.spDirty = true;
+        UI.logA(`<span style="color:#a5d6a7">[SYM]</span> ${species[a]?.name} + ${species[b]?.name}`);
+      }
+    }
+  }
+
+  function applyBioInteractions(dtS) {
+    for (const [aId, bId] of symPairs) {
+      const cA = cells.filter(c=>c.spId===aId);
+      const cB = cells.filter(c=>c.spId===bId);
+      for (const ca of cA) if (cB.some(cb=>d2(ca,cb)<COEX_R**2))
+        ca.stats.energy = Math.min(ca.stats.maxE, ca.stats.energy + 1.5*dtS);
+    }
+    for (const [para, host] of paraPairs) {
+      for (const p of cells.filter(c=>c.spId===para)) {
+        const h = cells.find(c => c.spId===host && d2(p,c)<COEX_R**2);
+        if (h) {
+          const stolen = Math.min(h.stats.energy, 1.8*dtS);
+          h.stats.energy -= stolen;
+          p.stats.energy = Math.min(p.stats.maxE, p.stats.energy + stolen*0.65);
+        }
+      }
+    }
+  }
+
+  // ── KATASTROFA MASOWEGO WYMIERANIA ──
+  function massExtinction(severity = 0.7) {
+    UI.logA(`<span style="color:#ff1744">[!!!] MASOWE WYMIERANIE</span> sila=${Math.round(severity*100)}%`);
+    for (let i = cells.length-1; i >= 0; i--) {
+      if (Math.random() < severity) {
+        cells[i].alive = false;
+        species[cells[i].spId].count--;
+      }
+    }
+    envVer++;
+    UI.showExtinctionBanner(severity);
+  }
+
+  // ── REWIND ──
+  function saveRewindFrame() {
+    rewindBuf.push({
+      t: simTime,
+      cells: cells.map(c => ({
+        x:c.x, y:c.y, spId:c.spId, dna:{...c.dna},
+        energy:c.stats.energy, age:c.stats.age,
+        maxAge:c.stats.maxAge, maxE:c.stats.maxE,
+        sz:c.stats.sz, intel:c.stats.intel,
+      })),
+    });
+    if (rewindBuf.length > REWIND_MAX) rewindBuf.shift();
+  }
+
+  // ── RESET ──
+  function reset() {
+    cells=[]; orgs=[]; species={}; nextSpId=1; nextCellId=1; nextOrgId=1;
+    totalMuts=0; totalExtinct=0; totalBorn=0;
+    simTime=0; tickN=0;
+    history=[]; lastHistMs=0;
+    rewindBuf=[]; rewindTick=0;
+    symPairs.clear(); paraPairs.clear(); coExist.clear(); coExTick=0;
+    intelligentSpecies.clear(); sentientSpecies.clear();
+    deadPool=[];
+    fitC.clear(); grid={};
+    usedNames=new Set();
+    genStats={gens:0,died:0,ageD:0,strvD:0,ages:[],survR:0,failR:0};
+  }
+
+  return {
+    get cells()   { return cells; },
+    get species() { return species; },
+    get orgs()    { return orgs; },
+    get totalMuts()    { return totalMuts;    },
+    get totalExtinct() { return totalExtinct; },
+    get totalBorn()    { return totalBorn;    },
+    get simTime()      { return simTime;      },
+    get genStats()     { return genStats;     },
+    get history()      { return history;      },
+    get rewindBuf()    { return rewindBuf;    },
+    get intelligentSpecies() { return intelligentSpecies; },
+    get sentientSpecies()    { return sentientSpecies;    },
+    set simTime(v) { simTime = v; },
+    set totalMuts(v){ totalMuts = v; },
+
+    tick, reset, massExtinction,
+    newSpecies, mkCell,
+    symPairs, paraPairs,
+    envVer, set envVer(v){ envVer=v; },
+    fitC,
+  };
+})();
+
+// === renderer.js ===
+// RENDERER — naukowy styl wizualizacji
+// Komórki: kształt jak pod mikroskopem, kolor = rola ekologiczna
+// Role mają unikalną ikonę rysowaną na komórce
+const RENDERER = (() => {
+  let cvBiome, cvCells, cvHud, ctxB, ctxC, ctxH;
+
+  // Paleta kolorów ról — jak markery fluorescencyjne
+  const ROLE_COLORS = {
+    producer:  '#2ec484', predator: '#e5534b', consumer: '#f5a623',
+    decomposer:'#9b8afb', parasite: '#ff6b9d', symbiont: '#4d9ef7',
+    generalist:'#8ba0be',
+  };
+
+  function init() {
+    cvBiome = document.getElementById('cvBiome');
+    cvCells = document.getElementById('cvCells');
+    cvHud   = document.getElementById('cvHud');
+    ctxB = cvBiome.getContext('2d');
+    ctxC = cvCells.getContext('2d');
+    ctxH = cvHud.getContext('2d');
+  }
+  function resize() {
+    [cvBiome,cvCells,cvHud].forEach(cv => {
+      cv.width  = window.innerWidth;
+      cv.height = window.innerHeight;
+      cv.style.width  = window.innerWidth  + 'px';
+      cv.style.height = window.innerHeight + 'px';
+    });
+  }
+
+  let lastBiomeFrame = -1;
+  function frame() {
+    const W=cvCells.width, H=cvCells.height;
+
+    // Biome canvas — tylko gdy kamera się zmieniła
+    ctxB.clearRect(0,0,W,H);
+    WORLD.renderBackground(ctxB, cvBiome);
+    WORLD.renderZones(ctxB, cvBiome);
+
+    // Cells
+    ctxC.clearRect(0,0,W,H);
+    renderOrgs(ctxC, cvCells);
+    renderCells(ctxC, cvCells);
+
+    // HUD canvas — mini-labels
+    ctxH.clearRect(0,0,W,H);
+    renderHudLabels(ctxH, cvHud);
+  }
+
+  function renderOrgs(ctx, canvas) {
+    if (!SIM.orgs.length) return;
+    ctx.setLineDash([3,3]); ctx.lineWidth=1;
+    for (const o of SIM.orgs) {
+      if (o.cells.length<2) continue;
+      const col = ROLE_COLORS[GENOME.getRole(o.cells[0].dna).key] || '#8ba0be';
+      ctx.strokeStyle = col.replace(')',',0.35)').replace('rgb','rgba').replace('#', 'rgba(').replace('rgba(','rgba(');
+      // Simpler approach: use globalAlpha
+      ctx.globalAlpha = 0.35;
+      ctx.strokeStyle = col;
+      for (let i=0;i<o.cells.length-1;i++) {
+        const a=o.cells[i], b=o.cells[i+1];
+        if (!a.alive||!b.alive) continue;
+        const sa=WORLD.worldToScreen(a.x,a.y,canvas);
+        const sb=WORLD.worldToScreen(b.x,b.y,canvas);
+        ctx.beginPath(); ctx.moveTo(sa.x,sa.y); ctx.lineTo(sb.x,sb.y); ctx.stroke();
+      }
+      ctx.globalAlpha=1;
+    }
+    ctx.setLineDash([]);
+  }
+
+  function renderCells(ctx, canvas) {
+    const zoom = WORLD.cam.zoom;
+    const skipGlow = SIM.cells.length > 500 || zoom < 0.18;
+    const skipDetails = zoom < 0.13;
+    const showIcons = zoom > 0.30;
+
+    for (const c of SIM.cells) {
+      if (!c.alive) continue;
+      if (!WORLD.isVisible(c.x, c.y, c.stats.sz+8, canvas)) continue;
+
+      const sc = WORLD.worldToScreen(c.x, c.y, canvas);
+      const s  = c.stats;
+      const r  = Math.max(2, s.sz * zoom);
+      const er = Math.max(0, Math.min(1, s.energy/s.maxE));
+      const ageFr = Math.min(1, s.age/s.maxAge);
+      const role  = GENOME.getRole(c.dna);
+      const roleCol = ROLE_COLORS[role.key] || '#8ba0be';
+
+      // Kolor ciała: rola + odcień DNA
+      const dnaHue = Math.round(c.dna.hue * 360);
+      const bodyCol = `hsl(${dnaHue},${Math.round(c.dna.sat*55+15)}%,${Math.round(c.dna.lit*28+36)}%)`;
+
+      const alpha = (0.6 + er*0.4) * (1 - ageFr*0.45);
+
+      // Glow zewnętrzny — kolor roli (fluorescencja)
+      if (!skipGlow && r > 3) {
+        ctx.globalAlpha = 0.18 + 0.10*Math.sin(c.ph);
+        const gd = ctx.createRadialGradient(sc.x,sc.y,0,sc.x,sc.y,r*3.2);
+        gd.addColorStop(0, roleCol);
+        gd.addColorStop(1, 'transparent');
+        ctx.beginPath(); ctx.arc(sc.x,sc.y,r*3.2,0,Math.PI*2);
+        ctx.fillStyle = gd; ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+
+      // Membrana — cienkie kółko kolorem roli
+      if (!skipDetails && r > 4) {
+        ctx.strokeStyle = roleCol;
+        ctx.lineWidth   = Math.max(0.8, 1.5*Math.min(zoom, 0.5)/0.5);
+        ctx.globalAlpha = 0.6 * alpha;
+        ctx.beginPath(); ctx.arc(sc.x,sc.y,r,0,Math.PI*2); ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+
+      // Cytoplazma
+      ctx.globalAlpha = alpha * 0.88;
+      ctx.beginPath(); ctx.arc(sc.x,sc.y,r*0.9,0,Math.PI*2);
+      ctx.fillStyle = bodyCol; ctx.fill();
+      ctx.globalAlpha = 1;
+
+      if (!skipDetails) {
+        // Jądro komórkowe — ciemniejsza kropka
+        ctx.globalAlpha = (0.55 - ageFr*0.3) * alpha;
+        ctx.beginPath(); ctx.arc(sc.x,sc.y,r*0.35,0,Math.PI*2);
+        ctx.fillStyle = 'rgba(200,230,255,0.9)'; ctx.fill();
+        ctx.globalAlpha = 1;
+
+        // Pierścień energii (jak w elektromigracji)
+        const arc = Math.PI*2*er;
+        ctx.beginPath();
+        ctx.arc(sc.x,sc.y, r+Math.max(1,1.6*zoom), -Math.PI/2, -Math.PI/2+arc);
+        ctx.strokeStyle = er>0.6 ? '#2ec484' : er>0.3 ? '#f5a623' : '#e5534b';
+        ctx.lineWidth   = Math.max(0.8, 1.6*zoom);
+        ctx.globalAlpha = 0.8;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+
+        // Drapieżnik: ostre kolce
+        if (role.key==='predator' && r>5 && showIcons) {
+          ctx.strokeStyle = '#e5534b';
+          ctx.lineWidth = 0.8;
+          ctx.globalAlpha = 0.5;
+          for (let i=0;i<6;i++) {
+            const angle = (i/6)*Math.PI*2 + c.ph*0.5;
+            ctx.beginPath();
+            ctx.moveTo(sc.x+Math.cos(angle)*r, sc.y+Math.sin(angle)*r);
+            ctx.lineTo(sc.x+Math.cos(angle)*(r+3*zoom), sc.y+Math.sin(angle)*(r+3*zoom));
+            ctx.stroke();
+          }
+          ctx.globalAlpha=1;
+        }
+
+        // Producent: zielone chloroplasty
+        if (role.key==='producer' && r>5 && showIcons) {
+          ctx.fillStyle='rgba(46,196,132,0.45)';
+          for (let i=0;i<3;i++) {
+            const a=(i/3)*Math.PI*2+c.ph;
+            ctx.beginPath();
+            ctx.ellipse(sc.x+Math.cos(a)*r*0.5, sc.y+Math.sin(a)*r*0.5,
+              r*0.18, r*0.1, a, 0, Math.PI*2);
+            ctx.fill();
+          }
+        }
+
+        // Inteligencja: złota aureola
+        if (s.intel==='sentient') {
+          ctx.strokeStyle='rgba(240,224,64,0.75)';
+          ctx.lineWidth=1.5; ctx.setLineDash([2,2]);
+          ctx.beginPath(); ctx.arc(sc.x,sc.y,r+5*zoom,0,Math.PI*2); ctx.stroke();
+          ctx.setLineDash([]);
+        } else if (s.intel==='intelligent') {
+          ctx.strokeStyle='rgba(240,224,64,0.35)';
+          ctx.lineWidth=1; ctx.setLineDash([2,3]);
+          ctx.beginPath(); ctx.arc(sc.x,sc.y,r+3*zoom,0,Math.PI*2); ctx.stroke();
+          ctx.setLineDash([]);
+        }
+
+        // Sygnał komunikacyjny: fala
+        if (c.signal>0.4 && !skipGlow) {
+          ctx.strokeStyle=`rgba(77,158,247,${c.signal*0.4})`;
+          ctx.lineWidth=0.8;
+          ctx.beginPath(); ctx.arc(sc.x,sc.y,r*(1.6+c.signal),0,Math.PI*2); ctx.stroke();
+        }
+
+        // Zaznaczona komórka
+        if (c===UI.selectedCell) {
+          ctx.strokeStyle='rgba(255,255,255,0.9)'; ctx.lineWidth=1.5;
+          ctx.setLineDash([3,3]);
+          ctx.beginPath(); ctx.arc(sc.x,sc.y,r+6*zoom,0,Math.PI*2); ctx.stroke();
+          ctx.setLineDash([]);
+        }
+      }
+
+      // Linia do ofiary (polowanie)
+      if (c.target?.alive && zoom>0.45) {
+        const st=WORLD.worldToScreen(c.target.x,c.target.y,canvas);
+        ctx.strokeStyle='rgba(229,83,75,0.22)'; ctx.lineWidth=0.8;
+        ctx.setLineDash([4,5]);
+        ctx.beginPath(); ctx.moveTo(sc.x,sc.y); ctx.lineTo(st.x,st.y); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+
+    // Martwa materia organiczna
+    if (zoom > 0.15) {
+      ctx.fillStyle='rgba(80,60,40,0.35)';
+      for (const d of (window._deadPool||[])) {
+        if (!WORLD.isVisible(d.x,d.y,5,canvas)) continue;
+        const sc=WORLD.worldToScreen(d.x,d.y,canvas);
+        const r=Math.max(1.5, 3*zoom);
+        ctx.beginPath(); ctx.arc(sc.x,sc.y,r,0,Math.PI*2); ctx.fill();
+      }
+    }
+  }
+
+  function renderHudLabels(ctx, canvas) {
+    if (WORLD.cam.zoom < 0.35) return;
+    // Etykieta "[R]" nad komórkami rozumnymi
+    for (const spId of SIM.sentientSpecies) {
+      const c = SIM.cells.find(c=>c.spId===spId&&c.alive);
+      if (!c) continue;
+      const sc=WORLD.worldToScreen(c.x,c.y,canvas);
+      ctx.font=`bold ${Math.round(9*WORLD.cam.zoom/0.5)}px "JetBrains Mono"`;
+      ctx.textAlign='center'; ctx.fillStyle='rgba(240,224,64,0.9)';
+      ctx.fillText('[R]', sc.x, sc.y-c.stats.sz*WORLD.cam.zoom-4);
+    }
+  }
+
+  // Live chart w prawym panelu
+  let liveHistory = []; // [{time, pop}] ostatnie N punktów
+  function updateLiveChart(canvas) {
+    if (!canvas) return;
+    const W=canvas.width, H=canvas.height;
+    const ctx=canvas.getContext('2d');
+    ctx.clearRect(0,0,W,H);
+    ctx.fillStyle='#0b1120'; ctx.fillRect(0,0,W,H);
+
+    // Zbierz dane
+    const pop=SIM.cells.length;
+    const t=SIM.simTime/1000;
+    liveHistory.push({t, pop});
+    if (liveHistory.length>80) liveHistory.shift();
+    if (liveHistory.length<2) return;
+
+    const maxPop=Math.max(...liveHistory.map(p=>p.pop), 10);
+    const minT=liveHistory[0].t, maxT=liveHistory[liveHistory.length-1].t;
+    const rangeT=Math.max(1, maxT-minT);
+
+    // Siatka
+    ctx.strokeStyle='rgba(77,158,247,0.08)'; ctx.lineWidth=1;
+    for (let i=0;i<=4;i++){
+      const y=4+(H-8)*i/4;
+      ctx.beginPath();ctx.moveTo(30,y);ctx.lineTo(W-4,y);ctx.stroke();
+    }
+
+    // Linia populacji
+    ctx.strokeStyle='#4d9ef7'; ctx.lineWidth=1.5;
+    ctx.beginPath();
+    liveHistory.forEach((pt,i)=>{
+      const x=30+(pt.t-minT)/rangeT*(W-34);
+      const y=(H-6)-(pt.pop/maxPop)*(H-10);
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+
+    // Etykiety
+    ctx.fillStyle='rgba(139,160,190,0.6)'; ctx.font='7px "JetBrains Mono"';
+    ctx.textAlign='right';
+    ctx.fillText(maxPop, 28, 10);
+    ctx.fillText('0', 28, H-2);
+    ctx.textAlign='left';
+    ctx.fillStyle='rgba(77,158,247,0.8)';
+    ctx.fillText(pop+' kom.', 32, 10);
+  }
+
+  // Gene bars update
+  function updateGeneBars() {
+    if (!SIM.cells.length) return;
+    const genes=['lD','hunt','decomp','brain','tR','rR','hR','comm'];
+    const labels=['lD','hunt','decomp','brain','tR','rR','hR','comm'];
+    const colors=['#2ec484','#e5534b','#9b8afb','#f0e040','#f5a623','#4d9ef7','#ff6b9d','#00d4e8'];
+
+    genes.forEach((k,i)=>{
+      const avg=SIM.cells.reduce((s,c)=>s+(c.dna[k]||0),0)/SIM.cells.length;
+      const fillEl=document.getElementById('gb-'+k);
+      const valEl =document.getElementById('gv-'+k);
+      if (fillEl) { fillEl.style.width=(avg*100).toFixed(0)+'%'; fillEl.style.background=colors[i]; }
+      if (valEl)  valEl.textContent=(avg*100).toFixed(0)+'%';
+    });
+  }
+
+  function frameRewind(idx) {
+    const buf=SIM.rewindBuf;
+    if (!buf.length) return;
+    const f=buf[Math.max(0,Math.min(buf.length-1,idx))];
+    const W=cvCells.width, H=cvCells.height;
+    ctxB.clearRect(0,0,W,H); WORLD.renderBackground(ctxB,cvBiome);
+    ctxC.clearRect(0,0,W,H);
+    for (const c of f.cells) {
+      if (!WORLD.isVisible(c.x,c.y,c.sz+6,cvCells)) continue;
+      const sc=WORLD.worldToScreen(c.x,c.y,cvCells);
+      const r=Math.max(2,c.sz*WORLD.cam.zoom);
+      const col=`hsl(${Math.round(c.dna.hue*360)},${Math.round(c.dna.sat*55+15)}%,${Math.round(c.dna.lit*28+36)}%)`;
+      const er=Math.max(0,Math.min(1,c.energy/c.maxE));
+      ctxC.globalAlpha=(0.6+er*0.4)*(1-Math.min(1,c.age/c.maxAge)*0.45);
+      ctxC.beginPath();ctxC.arc(sc.x,sc.y,r*0.9,0,Math.PI*2);ctxC.fillStyle=col;ctxC.fill();
+      ctxC.globalAlpha=1;
+      ctxC.beginPath();ctxC.arc(sc.x,sc.y,r+1.5,-Math.PI/2,-Math.PI/2+Math.PI*2*er);
+      ctxC.strokeStyle=er>0.6?'#2ec484':er>0.3?'#f5a623':'#e5534b';ctxC.lineWidth=1.5;ctxC.stroke();
+    }
+  }
+
+  function resetLiveHistory() { liveHistory=[]; }
+
+  return { init, resize, frame, frameRewind, updateLiveChart, updateGeneBars, resetLiveHistory,
+    ROLE_COLORS };
+})();
+
+// === ui.js ===
+// ================================================================
+// UI — interfejs użytkownika, HUD, panele, zdarzenia
+// ================================================================
+
+const UI = (() => {
+
+  let spDirty = true, lastHudT = 0;
+  let logBuf = [];
+  let selectedCell = null;
+
+  // ── Narzędzia interakcji ──
+  let currentTool = 'paint', isPainting = false, brushR = 120;
+  let barrierStart = null;
+  let rewindMode = false, rewindIdx = 0;
+
+  function logA(msg) {
+    const s = Math.floor(SIM.simTime / 1000);
+    const mm = String(Math.floor(s/60)).padStart(2,'0');
+    const ss = String(s%60).padStart(2,'0');
+    logBuf.unshift(`<div class="ll"><span class="lt">${mm}:${ss}</span>${msg}</div>`);
+    if (logBuf.length > 80) logBuf.length = 80;
+    const el = document.getElementById('logLines');
+    if (el) el.innerHTML = logBuf.slice(0,30).join('');
+  }
+
+  function pad(n) { return String(n).padStart(2,'0'); }
+
+  // ── HUD update ──
+  function updateHUD() {
+    const s = Math.floor(SIM.simTime / 1000);
+    const el = document.getElementById('timeVal');
+    if (el) el.textContent = pad(Math.floor(s/3600))+':'+pad(Math.floor(s/60)%60)+':'+pad(s%60);
+
+    document.getElementById('hCells')?.textContent !== undefined &&
+      (document.getElementById('hCells').textContent = SIM.cells.length);
+    const liveSp = Object.values(SIM.species).filter(s=>s.count>0);
+    document.getElementById('hSp') &&
+      (document.getElementById('hSp').textContent = liveSp.filter(s=>!s.isSub).length);
+    document.getElementById('hOrg') &&
+      (document.getElementById('hOrg').textContent = SIM.orgs.length);
+    document.getElementById('hMut') &&
+      (document.getElementById('hMut').textContent = SIM.totalMuts);
+    document.getElementById('hExt') &&
+      (document.getElementById('hExt').textContent = SIM.totalExtinct);
+    document.getElementById('hInt') &&
+      (document.getElementById('hInt').textContent = SIM.intelligentSpecies.size);
+
+    // Live chart
+    const lc=document.getElementById('liveChartCanvas');
+    if(lc) RENDERER.updateLiveChart(lc);
+    RENDERER.updateGeneBars();
+
+    if (spDirty) {
+      spDirty = false;
+      const all = liveSp.sort((a,b)=>b.count-a.count);
+      const mx = Math.max(...all.map(s=>s.count), 1);
+      const isSym  = id => SIM.symPairs.has(id);
+      const isPara = id => SIM.paraPairs.has(id);
+      const isHost = id => [...SIM.paraPairs.values()].includes(id);
+      const isInt  = id => SIM.intelligentSpecies.has(id);
+      const isSent = id => SIM.sentientSpecies.has(id);
+      document.getElementById('spList').innerHTML = all.map(sp => {
+        const col = GENOME.color(sp.refDNA);
+        const badge = isSent(sp.id)?'<span style="color:#ffeb3b">[R]</span>':
+                      isInt(sp.id) ?'<span style="color:#fff59d">[I]</span>':
+                      isSym(sp.id) ?'<span style="color:#a5d6a7">[SYM]</span>':
+                      isPara(sp.id)?'<span style="color:#ef9a9a">[PAR]</span>':
+                      isHost(sp.id)?'<span style="color:#ffcc80">[HOST]</span>':'';
+        return `<div class="sp-item" onclick="UI.selectSpecies(${sp.id})">
+          <div class="sp-row">
+            <div class="sp-dot" style="background:${col};box-shadow:0 0 4px ${col}"></div>
+            <span class="sp-name" style="color:${col}">${sp.isSub?'<span style="opacity:.4">o</span>':''}${sp.label||sp.name} ${badge}</span>
+            <span class="sp-cnt" style="color:${col}">${sp.count}</span>
+          </div>
+          <div class="sp-bar"><div class="sp-bar-fill" style="width:${sp.count/mx*100}%;background:${col}"></div></div>
+          <div class="sp-role" style="color:${sp.roleColor||'#90a4ae'}">${sp.roleIcon||'[G]'} ${sp.roleName||'Generalista'}</div>
+        </div>`;
+      }).join('');
+    }
+
+    // Wskaźniki środowiska
+    const E = ENV.E;
+    const season = SEASON.current();
+    const t = E.temp * season.tempMod;
+    document.getElementById('eT').innerHTML = (t<5?'[L]':t>60?'[G]':'[T]')+`<small>${Math.round(t)}C</small>`;
+    document.getElementById('eL').innerHTML = (E.light<25?'[C]':E.light>80?'[S]':'[D]')+`<small>${Math.round(E.light*season.lightMod)}%</small>`;
+    document.getElementById('eP').innerHTML = `[pH]<small>${E.ph.toFixed(1)}</small>`;
+    document.getElementById('eX').innerHTML = (E.tox>50?'[!]':'[ok]')+`<small>${E.tox}%</small>`;
+  }
+
+  // ── Drawer ──
+  function toggleDrawer() {
+    const d = document.getElementById('drawer');
+    const b = document.getElementById('backdrop');
+    const m = document.getElementById('menuBtn');
+    const open = d.classList.toggle('open');
+    b.classList.toggle('show', open);
+    m.classList.toggle('open', open);
+  }
+  function switchTab(n, el) {
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+    document.querySelectorAll('.dtab').forEach(t=>t.classList.remove('on'));
+    document.getElementById('tab-'+n).classList.add('on');
+    el.classList.add('on');
+  }
+
+  // ── Narzędzia ──
+  function setTool(t) {
+    currentTool = t;
+    ['select','kill','paint','barrier'].forEach(id => {
+      const el = document.getElementById('t-'+id);
+      if (el) el.classList.toggle('on', id===t);
+    });
+    const cv = document.getElementById('cvCells');
+    cv.style.cursor = t==='kill'?'crosshair':t==='paint'||t==='barrier'?'cell':'default';
+    // Pokaż/ukryj narzędzia strefy
+    const zp = document.getElementById('zoneLegend');
+    if (zp) zp.classList.toggle('show', t==='paint'||t==='barrier');
+  }
+
+  function getPos(e, canvas) {
+    const r = canvas.getBoundingClientRect();
+    const sx = canvas.width / r.width, sy = canvas.height / r.height;
+    const src = e.touches ? e.touches[0] : e;
+    const px = (src.clientX - r.left) * sx;
+    const py = (src.clientY - r.top)  * sy;
+    return WORLD.screenToWorld(src.clientX, src.clientY, canvas);
+  }
+
+  function findCell(wx, wy) {
+    let best = null, bd = Infinity;
+    for (const c of SIM.cells) {
+      const dd = (c.x-wx)**2 + (c.y-wy)**2;
+      if (dd < (c.stats.sz+15)**2 && dd < bd) { bd=dd; best=c; }
+    }
+    return best;
+  }
+
+  function interact(wx, wy, drag) {
+    const canvas = document.getElementById('cvCells');
+    if (currentTool === 'paint') {
+      const type = document.getElementById('zoneType')?.value || 'food';
+      WORLD.addZone(wx, wy, type, brushR);
+      SIM.envVer++;
+    } else if (currentTool === 'barrier' && !drag) {
+      if (!barrierStart) {
+        barrierStart = { x: wx, y: wy };
+      } else {
+        WORLD.addBarrier(barrierStart.x, barrierStart.y, wx, wy);
+        barrierStart = null;
+        SIM.envVer++;
+        logA('[BAR] Bariera geograficzna dodana');
+      }
+    } else if (currentTool === 'kill' && !drag) {
+      const c = findCell(wx, wy);
+      if (c) { c.alive = false; logA(`[X] Zabito ${SIM.species[c.spId]?.name}`); }
+    } else if (currentTool === 'select' && !drag) {
+      selectedCell = findCell(wx, wy);
+    }
+  }
+
+  // ── Tooltip ──
+  function showTip(c, cx, cy) {
+    const tip = document.getElementById('tip');
+    if (!c) { tip.style.display='none'; return; }
+    const g = c.dna, s = c.stats, sp = SIM.species[c.spId];
+    const f = ((() => {
+      try { return SIM.fitC.get(c.id)?.f || 0; } catch(e){ return 0; }
+    })() * 100).toFixed(0);
+    const col = GENOME.color(g);
+    const role = GENOME.getRole(g);
+    const intel = GENOME.intelligenceLevel(g);
+    tip.style.display = 'block';
+    tip.style.left = (cx+14)+'px';
+    tip.style.top  = (cy-10)+'px';
+    tip.innerHTML =
+      `<span style="color:${col};font-size:12px">${sp?.label||sp?.name}</span> `+
+      `<span style="color:${role.color};font-size:10px">${role.icon}</span><br>`+
+      `E:${Math.round(s.energy)}/${Math.round(s.maxE)} Wiek:${Math.round(s.age)}/${Math.round(s.maxAge)}<br>`+
+      `Fit:<span style="color:${+f>60?'#69ff47':+f>30?'#ff9100':'#ff1744'}">${f}%</span> `+
+      `hR:${(g.hR*100).toFixed(0)} tR:${(g.tR*100).toFixed(0)}<br>`+
+      `hunt:${(g.hunt*100).toFixed(0)}% decomp:${(g.decomp*100).toFixed(0)}%<br>`+
+      `brain:${(g.brain*100).toFixed(0)}% [${intel}]<br>`+
+      (c.orgId?'[org]':'solo');
+  }
+
+  // ── Toast (mobile) ──
+  let toastT;
+  function showToast(msg) {
+    clearTimeout(toastT);
+    let t = document.getElementById('toast');
+    if (!t) {
+      t = document.createElement('div'); t.id = 'toast';
+      Object.assign(t.style, {
+        position:'fixed', bottom:'62px', left:'50%', transform:'translateX(-50%)',
+        background:'rgba(1,10,5,.85)', border:'1px solid #69ff47', color:'#c8f0d8',
+        fontFamily:"'Share Tech Mono',monospace", fontSize:'11px',
+        padding:'8px 14px', borderRadius:'20px', zIndex:'600',
+        pointerEvents:'none', backdropFilter:'blur(8px)',
+        whiteSpace:'nowrap', transition:'opacity .3s',
+      });
+      document.body.appendChild(t);
+    }
+    t.textContent = msg; t.style.opacity = '1';
+    toastT = setTimeout(() => { t.style.opacity='0'; }, 2500);
+  }
+
+  // ── Extinction banner ──
+  function showExtinctionBanner(severity) {
+    const el = document.getElementById('extinctionBanner');
+    if (!el) return;
+    el.innerHTML = `MASOWE WYMIERANIE<small>sila ${Math.round(severity*100)}%</small>`;
+    el.classList.add('show');
+    setTimeout(() => el.classList.remove('show'), 4000);
+  }
+
+  // ── Select species (klik na liście) ──
+  function selectSpecies(spId) {
+    const sp = SIM.species[spId];
+    if (!sp) return;
+    // Wycentruj mapę na centrum gatunku
+    const spCells = SIM.cells.filter(c => c.spId === spId);
+    if (!spCells.length) return;
+    const cx = spCells.reduce((s,c)=>s+c.x,0)/spCells.length;
+    const cy = spCells.reduce((s,c)=>s+c.y,0)/spCells.length;
+    WORLD.cam.x = cx; WORLD.cam.y = cy;
+    WORLD.cam.zoom = Math.max(WORLD.cam.zoom, 0.5);
+  }
+
+  // ── Statystyki pokoleń ──
+  function showGenStats() {
+    const g = SIM.genStats;
+    const ages = g.ages;
+    const avg = ages.length ? ages.reduce((a,b)=>a+b,0)/ages.length : 0;
+    const tot = g.survR + g.failR;
+    const sR  = tot ? (g.survR/tot*100) : 0;
+    const allSp = Object.values(SIM.species);
+    const roles = {};
+    allSp.filter(s=>s.count>0).forEach(sp => {
+      roles[sp.roleName||'Generalista'] = (roles[sp.roleName||'Generalista']||0) + sp.count;
+    });
+    document.getElementById('gsContent').innerHTML =
+      `<div class="gs-row"><span>Sr. wiek smierci</span><span class="gsv">${avg.toFixed(0)} t</span></div>`+
+      `<div class="gs-row"><span>Pokolen lacznie</span><span class="gsv">${g.gens}</span></div>`+
+      `<div class="gs-row"><span>Przezylo do repr.</span><span class="gsv" style="color:var(--g)">${sR.toFixed(1)}%</span></div>`+
+      `<div class="gs-row"><span>Smierc starosc</span><span class="gsv" style="color:#80cbc4">${g.ageD}</span></div>`+
+      `<div class="gs-row"><span>Smierc glod</span><span class="gsv" style="color:var(--w)">${g.strvD}</span></div>`+
+      `<div style="margin-top:8px;border-top:1px solid var(--brd);padding-top:8px;">`+
+      Object.entries(roles).map(([r,n])=>`<div class="gs-row"><span>${r}</span><span class="gsv">${n}</span></div>`).join('')+
+      `</div>`+
+      `<div style="margin-top:8px;border-top:1px solid var(--brd);padding-top:8px;">`+
+      `<div class="gs-row"><span>Inteligentne gatunki</span><span class="gsv" style="color:#fff59d">${SIM.intelligentSpecies.size}</span></div>`+
+      `<div class="gs-row"><span>Rozumne gatunki</span><span class="gsv" style="color:#ffeb3b">${SIM.sentientSpecies.size}</span></div>`+
+      `<div class="gs-row"><span>Symbiozy</span><span class="gsv" style="color:#a5d6a7">${SIM.symPairs.size/2}</span></div>`+
+      `<div class="gs-row"><span>Pasozytnictwa</span><span class="gsv" style="color:#ef9a9a">${SIM.paraPairs.size}</span></div>`+
+      `</div>`;
+    document.getElementById('genStatsOverlay').classList.add('show');
+  }
+
+  // ── Drzewo ewolucji ──
+  function showTree() {
+    const ov = document.getElementById('treeOverlay');
+    ov.classList.add('show');
+    const allSp = Object.values(SIM.species);
+    if (allSp.length < 2) {
+      document.getElementById('treeInfo').textContent = 'Za malo gatunkow.'; return;
+    }
+    const W = Math.min(window.innerWidth-32, 900);
+    const H = Math.min(window.innerHeight-220, 500);
+    const tc = document.getElementById('treeCanvas');
+    tc.width=W; tc.height=H;
+    const tx = tc.getContext('2d');
+    tx.fillStyle='#010a05'; tx.fillRect(0,0,W,H);
+    // Rozkład węzłów
+    const byDepth = {};
+    allSp.forEach(s=>{ const d=s.depth||0; (byDepth[d]||(byDepth[d]=[])).push(s); });
+    const maxD = Math.max(...Object.keys(byDepth).map(Number), 0);
+    const nodes = {};
+    const PAD=40, cW=(W-PAD*2)/Math.max(maxD+1,1);
+    Object.entries(byDepth).forEach(([dep,sps])=>{
+      const rH=(H-PAD*2)/Math.max(sps.length,1);
+      sps.forEach((sp,i)=>{ nodes[sp.id]={x:PAD+cW*(+dep)+cW/2, y:PAD+rH*i+rH/2, sp}; });
+    });
+    // Krawędzie
+    tx.lineWidth=1.5;
+    allSp.forEach(sp=>{
+      if(!sp.parent||!nodes[sp.parent]||!nodes[sp.id])return;
+      const a=nodes[sp.parent], b=nodes[sp.id];
+      const col=GENOME.color(sp.refDNA);
+      tx.beginPath(); tx.moveTo(a.x,a.y);
+      tx.bezierCurveTo((a.x+b.x)/2,a.y,(a.x+b.x)/2,b.y,b.x,b.y);
+      tx.strokeStyle=sp.extinct?'rgba(255,255,255,.1)':col.replace('hsl(','hsla(').replace(')',',0.5)');
+      tx.stroke();
+    });
+    // Węzły
+    Object.values(nodes).forEach(({x,y,sp})=>{
+      const r=sp.extinct?4:Math.max(4,Math.min(14,sp.count/4+4));
+      const col=GENOME.color(sp.refDNA);
+      const gd=tx.createRadialGradient(x,y,0,x,y,r*2.5);
+      gd.addColorStop(0,col.replace('hsl(','hsla(').replace(')',',0.35)')); gd.addColorStop(1,'transparent');
+      tx.beginPath();tx.arc(x,y,r*2.5,0,Math.PI*2);tx.fillStyle=gd;tx.fill();
+      tx.beginPath();tx.arc(x,y,r,0,Math.PI*2);
+      tx.fillStyle=sp.extinct?'rgba(80,80,80,.6)':col;tx.fill();
+      // Aureola dla inteligentnych
+      if(SIM.sentientSpecies.has(sp.id)){
+        tx.beginPath();tx.arc(x,y,r+3,0,Math.PI*2);
+        tx.strokeStyle='rgba(255,235,59,.7)';tx.lineWidth=2;tx.stroke();
+      }
+      tx.fillStyle=sp.extinct?'rgba(144,164,174,.4)':col;
+      tx.font=`${sp.count>0?'bold ':''} 8px "Share Tech Mono"`;
+      tx.textAlign='center';
+      tx.fillText(sp.label||sp.name,x,y+r+9);
+      if(sp.count>0){tx.fillStyle='rgba(255,255,255,.35)';tx.fillText(sp.count,x,y+r+18);}
+      if(sp.roleIcon){tx.fillStyle=sp.roleColor||'#90a4ae';tx.fillText(sp.roleIcon,x,y+r+27);}
+    });
+    const ext=allSp.filter(s=>s.extinct).length;
+    document.getElementById('treeInfo').textContent=
+      `${allSp.length} gatunkow  ${allSp.length-ext} zywych  ${ext} wymarle  `+
+      `${SIM.totalMuts} mutacji  ${SIM.intelligentSpecies.size} inteligentnych`;
+  }
+
+  // ── Wykres końcowy ──
+  function showChart() {
+    document.getElementById('chartOverlay').classList.add('show');
+    const dur=Math.floor(SIM.simTime/1000);
+    const all=Object.values(SIM.species);
+    const allG=all.filter(s=>!s.isSub).length, allS=all.filter(s=>s.isSub).length;
+    document.getElementById('chtStats').innerHTML=
+      `<span>Czas:<span class="csv">${pad(Math.floor(dur/60))}:${pad(dur%60)}</span></span>`+
+      `<span>Rok:<span class="csv">${SEASON.getYear()+1}</span></span>`+
+      `<span>Mutacje:<span class="csv">${SIM.totalMuts}</span></span>`+
+      `<span>Gatunki:<span class="csv">${allG}</span></span>`+
+      `<span>Podgatunki:<span class="csv">${allS}</span></span>`+
+      `<span>Wymarle:<span class="csv">${SIM.totalExtinct}</span></span>`+
+      `<span>Inteligentne:<span class="csv">${SIM.intelligentSpecies.size}</span></span>`;
+
+    const history = SIM.history;
+    if (history.length < 2) return;
+    const maxW=Math.min(900,window.innerWidth-32), maxH=Math.max(180,Math.min(440,window.innerHeight-280));
+    const chartEl=document.getElementById('chart');
+    chartEl.width=maxW; chartEl.height=maxH;
+    const cc=chartEl.getContext('2d'), W=maxW, H=maxH;
+    cc.fillStyle='#010a05'; cc.fillRect(0,0,W,H);
+    cc.strokeStyle='rgba(105,255,71,.06)'; cc.lineWidth=1;
+    for(let i=0;i<=6;i++){const y=25+(H-40)*i/6;cc.beginPath();cc.moveTo(40,y);cc.lineTo(W-8,y);cc.stroke();}
+
+    // Zbierz wszystkie IDs
+    const allIds=new Set();
+    history.forEach(h=>Object.keys(h).forEach(k=>{ if(k!=='time') allIds.add(+k); }));
+    Object.keys(SIM.species).forEach(k=>allIds.add(+k));
+
+    let maxT=SIM.simTime;
+    history.forEach(h=>{ if(h.time>maxT) maxT=h.time; });
+    let maxC=1;
+    allIds.forEach(id=>{
+      const sp=SIM.species[id]; if(sp&&sp.count>maxC) maxC=sp.count;
+      history.forEach(h=>{ if((h[id]||0)>maxC) maxC=h[id]; });
+    });
+
+    allIds.forEach(id=>{
+      const sp=SIM.species[id]; if(!sp) return;
+      const col=GENOME.color(sp.refDNA);
+      cc.beginPath(); cc.strokeStyle=col; cc.lineWidth=sp.isSub?1:2;
+      if(sp.isSub) cc.setLineDash([4,3]);
+      let first=true;
+      history.forEach(sn=>{
+        if(sn[id]===undefined&&!first) return;
+        const x=40+(sn.time/maxT)*(W-48);
+        const y=(H-15)-((sn[id]||0)/maxC)*(H-40);
+        if(first){cc.moveTo(x,y);first=false;}else cc.lineTo(x,y);
+      });
+      if(sp.count>0){const x=40+(SIM.simTime/maxT)*(W-48);const y=(H-15)-(sp.count/maxC)*(H-40);if(first)cc.moveTo(x,y);else cc.lineTo(x,y);}
+      cc.stroke(); cc.setLineDash([]);
+      const lx=40+(Math.min(SIM.simTime,maxT)/maxT)*(W-48);
+      const ly=(H-15)-(sp.count/maxC)*(H-40);
+      cc.beginPath();cc.arc(lx,ly,sp.isSub?2:3,0,Math.PI*2);cc.fillStyle=col;cc.fill();
+    });
+
+    cc.strokeStyle='rgba(105,255,71,.4)';cc.lineWidth=1.5;
+    cc.beginPath();cc.moveTo(40,25);cc.lineTo(40,H-15);cc.lineTo(W-8,H-15);cc.stroke();
+    cc.fillStyle='rgba(105,255,71,.5)';cc.font='8px "Share Tech Mono"';
+    for(let i=0;i<=4;i++){const y=(H-15)-(i/4)*(H-40);cc.fillText(Math.round(maxC*i/4),2,y+3);}
+    cc.fillText('CZAS->',W-52,H-3);
+
+    const sorted=[...allIds].map(id=>SIM.species[id]).filter(Boolean)
+      .sort((a,b)=>a.extinct-b.extinct||b.count-a.count);
+    document.getElementById('chtLegend').innerHTML=sorted.map(sp=>{
+      const col=GENOME.color(sp.refDNA);
+      return`<div class="leg-i"><div class="leg-d" style="background:${col};opacity:${sp.extinct?.5:1}"></div>`+
+        `<span style="color:${col};opacity:${sp.extinct?.6:1}">${sp.label||sp.name}`+
+        `${sp.isSub?' <span style="opacity:.4">o</span>':''}${sp.extinct?' <span style="color:#ef9a9a">†</span>':''}`+
+        ` <span style="color:${sp.roleColor||'#90a4ae'};font-size:8px">${sp.roleIcon||''}</span></span></div>`;
+    }).join('');
+  }
+
+  // ── Rewind ──
+  function enterRewind() {
+    if (!SIM.rewindBuf.length) return;
+    rewindMode = true;
+    rewindIdx = SIM.rewindBuf.length - 1;
+    document.getElementById('pausedBadge').style.display = 'none';
+    document.getElementById('rewindPanel').style.display = 'flex';
+    RENDERER.frameRewind(rewindIdx);
+  }
+  function exitRewind() {
+    rewindMode = false;
+    document.getElementById('rewindPanel').style.display = 'none';
+  }
+  function rewindStep(d) {
+    rewindIdx = Math.max(0, Math.min(SIM.rewindBuf.length-1, rewindIdx+d));
+    const sl = document.getElementById('rewindSlider');
+    if (sl) { sl.max = SIM.rewindBuf.length-1; sl.value = rewindIdx; }
+    const f = SIM.rewindBuf[rewindIdx];
+    const ts = Math.floor(f.t/1000);
+    const rt = document.getElementById('rewindTime'); if(rt) rt.textContent=pad(Math.floor(ts/60))+':'+pad(ts%60);
+    const rp = document.getElementById('rewindPct');  if(rp) rp.textContent=Math.round(rewindIdx/(SIM.rewindBuf.length-1)*100)+'%';
+    RENDERER.frameRewind(rewindIdx);
+  }
+
+  return {
+    logA, updateHUD, spDirty,
+    set spDirty(v) { spDirty = v; },
+    get spDirty()  { return spDirty; },
+    get selectedCell() { return selectedCell; },
+    toggleDrawer, switchTab,
+    setTool, interact, getPos, findCell, showTip, showToast,
+    showExtinctionBanner,
+    selectSpecies,
+    showGenStats, showTree, showChart,
+    enterRewind, exitRewind, rewindStep,
+    get rewindMode() { return rewindMode; },
+    get isPainting()  { return isPainting; },
+    set isPainting(v) { isPainting = v; },
+    get currentTool() { return currentTool; },
+    get brushR()      { return brushR; },
+    set brushR(v)     { brushR = v; },
+  };
+})();
+
+// === main.js ===
+// ================================================================
+// MAIN — pętla gry, wejście, start
+// ================================================================
+
+// ── Stan pętli ──
+let SIM_RUNNING = false, PAUSED = false, TURBO = false;
+let lastFrame = null, simSpeed = 1;
+let raf = null, turboRaf = null;
+
+// ── Konfiguracja startowa ──
+const CFG = {
+  life:600, rep:.7, mut:.02, spd:.7, size:5, ene:120,
+  orgTend:.12, heat:.6,
+  capacity: 2000,  // K dla logistyki populacji
+};
+
+// Dostęp do globalnego E (środowisko) przez ENV.E
+const E = new Proxy({}, {
+  get: (_, k) => ENV.E[k],
+  set: (_, k, v) => { ENV.E[k] = v; return true; },
+});
+
+// ── Pętla główna ──
+function loop(ts) {
+  if (!SIM_RUNNING) return;
+  if (PAUSED) { lastFrame = ts; raf = requestAnimationFrame(loop); return; }
+  if (!lastFrame) lastFrame = ts;
+  const dt = Math.min((ts - lastFrame) * simSpeed, 300);
+  lastFrame = ts;
+  SIM.simTime += dt;
+
+  if (TURBO) { raf = null; runTurbo(); return; }
+
+  const tk = Math.min(Math.max(1, Math.floor(dt/16)), 6);
+  for (let i = 0; i < tk; i++) SIM.tick(16);
+
+  RENDERER.frame();
+  if (SIM.simTime - (UI._lastHudT || 0) > 300) {
+    UI.updateHUD();
+    UI._lastHudT = SIM.simTime;
+  }
+
+  raf = requestAnimationFrame(loop);
+}
+
+function runTurbo() {
+  if (!SIM_RUNNING || !TURBO) return;
+  if (PAUSED) { turboRaf = setTimeout(runTurbo, 50); return; }
+  for (let i = 0; i < 40; i++) { SIM.simTime += 16; SIM.tick(16); }
+  if (SIM.simTime - (UI._lastHudT||0) > 800) { UI.updateHUD(); UI._lastHudT = SIM.simTime; }
+  turboRaf = setTimeout(runTurbo, 0);
+}
+
+// ── Start / Stop ──
+function startSim() {
+  if (raf) cancelAnimationFrame(raf);
+  if (turboRaf) clearTimeout(turboRaf);
+
+  SIM.reset();
+  WORLD.clearAll();
+  WORLD.generateBiomes(Date.now()%99999);  // unikalne biomy per run
+
+  // Wczytaj CFG z UI
+  const g = id => +document.getElementById(id)?.value || 0;
+  CFG.life    = g('cfgLife')    || 600;
+  CFG.rep     = g('cfgRep')     || 0.7;
+  CFG.mut     = g('cfgMut')/100 || 0.02;
+  CFG.spd     = g('cfgSpd')     || 0.7;
+  CFG.size    = g('cfgSize')    || 5;
+  CFG.ene     = g('cfgEne')     || 120;
+  CFG.orgTend = g('cfgOrg')/100 || 0.12;
+  CFG.heat    = g('cfgHeat')    || 0.6;
+  CFG.capacity = 2000;
+
+  ENV.E.temp  = g('sTemp') || 22;
+  ENV.E.light = g('sLight')|| 70;
+  ENV.E.ph    = g('sPh')/10 || 7.2;
+  ENV.E.tox   = g('sTox')  || 0;
+  ENV.E.nut   = g('sNut')  || 80;
+  ENV.E.rad   = g('sRad')  || 1;
+  ENV.E.osm   = g('sOsm')  || 48;
+
+  // Pierwszy gatunek
+  const spId = SIM.newSpecies(GENOME.base(CFG), null, false);
+  // Zacznij od kilku komórek rozrzuconych po mapie
+  const startCount = 12;
+  for (let i = 0; i < startCount; i++) {
+    const pos = WORLD.scatterPos(i, startCount);
+    const c = SIM.mkCell(pos.x, pos.y, spId);
+    c.forkDNA = { ...c.dna };
+    SIM.cells.push(c);
+  }
+
+  UI.logA(`<span style="color:#a5d6a7">[>>] START</span> ${SIM.species[spId].name} 1 komorka`);
+
+  SIM_RUNNING = true; PAUSED = false;
+  setBtns(true);
+  WORLD.zoomFit(document.getElementById('cvCells'));
+  raf = requestAnimationFrame(loop);
+
+  document.getElementById('drawer').classList.remove('open');
+  document.getElementById('backdrop').classList.remove('show');
+  document.getElementById('menuBtn').classList.remove('open');
+}
+
+function togglePause() {
+  if (!SIM_RUNNING) return;
+  PAUSED = !PAUSED;
+  document.getElementById('pausedBadge').style.display = PAUSED?'block':'none';
+  const lbl = PAUSED ? '>> WZNOW' : '|| PAUZA';
+  ['btnPause','dPause'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=lbl;});
+  const mb = document.getElementById('mbPause');
+  if (mb) { mb.querySelector('.mb-ic').textContent=PAUSED?'>>':'||'; mb.querySelector('.mb-lb').textContent=PAUSED?'WZNOW':'PAUZA'; }
+  lastFrame = null;
+}
+
+function stopSim() {
+  if (!SIM_RUNNING) return;
+  SIM_RUNNING = false; PAUSED = false;
+  if (raf) cancelAnimationFrame(raf);
+  if (turboRaf) clearTimeout(turboRaf);
+  document.getElementById('pausedBadge').style.display = 'none';
+  setBtns(false);
+  const sn = { time: SIM.simTime };
+  Object.values(SIM.species).forEach(sp => { sn[sp.id] = sp.count; });
+  SIM.history.push(sn);
+  UI.showChart();
+}
+
+function setSpeed(s, id) {
+  simSpeed = s;
+  ['sp1','sp3','sp8','msp1','msp3','msp8','sp1d','sp3d','sp8d'].forEach(i=>{
+    const el=document.getElementById(i); if(el) el.classList.remove('active');
+  });
+  const sf = s===1?'1':s===3?'3':'8';
+  ['sp'+sf,'msp'+sf,'sp'+sf+'d'].forEach(i=>{const el=document.getElementById(i);if(el)el.classList.add('active');});
+}
+
+function toggleTurbo() {
+  TURBO = !TURBO;
+  const btn = document.getElementById('turboBtn');
+  if (btn) { btn.classList.toggle('on',TURBO); btn.textContent=TURBO?'[T]':'[-]'; }
+  if (TURBO) {
+    if (raf) { cancelAnimationFrame(raf); raf=null; }
+    if (SIM_RUNNING && !PAUSED) runTurbo();
+  } else {
+    if (turboRaf) { clearTimeout(turboRaf); turboRaf=null; }
+    if (SIM_RUNNING && !PAUSED) { lastFrame=null; raf=requestAnimationFrame(loop); }
+  }
+}
+
+function setTimescale(mode) {
+  SEASON.setMode(mode);
+  document.querySelectorAll('.tsbtn').forEach(b => b.classList.remove('active'));
+  const el = document.getElementById('ts-'+mode);
+  if (el) el.classList.add('active');
+}
+
+function triggerExtinction() {
+  if (!SIM_RUNNING) return;
+  const sev = 0.4 + Math.random() * 0.45;
+  SIM.massExtinction(sev);
+}
+
+function setBtns(on) {
+  ['btnPause','btnStop','mbPause','mbStop','dPause','dStop'].forEach(id=>{
+    const el = document.getElementById(id); if (el) el.disabled = !on;
+  });
+}
+
+// ── PRESETS ──
+const PR = {
+  balanced:  {life:600, rep:.70, mut:2,  spd:.7, size:5,  ene:120, org:12, heat:.6 },
+  fragile:   {life:250, rep:.90, mut:6,  spd:1.0,size:4,  ene:80,  org:5,  heat:.3 },
+  aggressive:{life:400, rep:1.2, mut:4,  spd:1.2,size:5,  ene:100, org:10, heat:.65},
+  slow:      {life:1400,rep:.30, mut:1,  spd:.35,size:8,  ene:220, org:20, heat:.75},
+  chaos:     {life:350, rep:1.0, mut:18, spd:.9, size:5,  ene:100, org:18, heat:.45},
+};
+function applyPreset(n, el) {
+  const p = PR[n];
+  ['Life','Rep','Mut','Spd','Size','Ene','Org','Heat'].forEach(k=>{
+    const v=p[k.toLowerCase()]; if(v!==undefined) {const e=document.getElementById('cfg'+k);if(e)e.value=v;}
+  });
+  document.querySelectorAll('.pbtn').forEach(b=>b.classList.remove('sel'));
+  el.classList.add('sel');
+  cfgUp();
+}
+
+function cfgUp() {
+  const g = id => +document.getElementById(id)?.value || 0;
+  const life=g('cfgLife'),rep=g('cfgRep'),mut=g('cfgMut'),spd=g('cfgSpd'),
+        size=g('cfgSize'),ene=g('cfgEne'),org=g('cfgOrg'),heat=g('cfgHeat');
+  const set = (id,v) => { const e=document.getElementById(id); if(e)e.textContent=v; };
+  set('dvLife',life+' t'); set('dvRep',rep.toFixed(2)); set('dvMut',mut.toFixed(1)+'%');
+  set('dvSpd',spd.toFixed(1)); set('dvSz',size.toFixed(1)+' px'); set('dvEne',ene);
+  set('dvOrg',org+'%'); set('dvHeat',heat.toFixed(2));
+  drawPv(size, ene);
+  const ps=document.getElementById('pvStats');
+  if(ps) ps.innerHTML=
+    `[sz]<span style="color:var(--g)">${size.toFixed(1)}px</span><br>`+
+    `[E]<span style="color:var(--g)">${ene}</span><br>`+
+    `[r]<span style="color:var(--g)">${rep.toFixed(2)}</span><br>`+
+    `[m]<span style="color:var(--w)">${mut.toFixed(1)}%</span><br>`+
+    `[age]<span style="color:var(--g)">${life}t</span>`;
+}
+
+function drawPv(size, ene) {
+  const pc=document.getElementById('pvc'); if(!pc)return;
+  const px=pc.getContext('2d');
+  px.clearRect(0,0,84,84); px.fillStyle='#010a05'; px.fillRect(0,0,84,84);
+  px.strokeStyle='rgba(105,255,71,.06)'; px.lineWidth=1;
+  for(let i=0;i<84;i+=18){px.beginPath();px.moveTo(i,0);px.lineTo(i,84);px.stroke();px.beginPath();px.moveTo(0,i);px.lineTo(84,i);px.stroke();}
+  const r=Math.min(size*1.7,20),cx=42,cy=42;
+  const gd=px.createRadialGradient(cx,cy,0,cx,cy,r*3);
+  gd.addColorStop(0,'rgba(105,255,71,.26)');gd.addColorStop(1,'transparent');
+  px.beginPath();px.arc(cx,cy,r*3,0,Math.PI*2);px.fillStyle=gd;px.fill();
+  px.beginPath();px.arc(cx,cy,r,0,Math.PI*2);px.fillStyle='hsl(140,82%,55%)';px.fill();
+  px.beginPath();px.arc(cx,cy,r*.35,0,Math.PI*2);px.fillStyle='rgba(255,255,255,.5)';px.fill();
+  px.beginPath();px.arc(cx,cy,r+2,-Math.PI/2,-Math.PI/2+Math.PI*2*(ene/300));
+  px.strokeStyle='#00e5ff';px.lineWidth=2.5;px.stroke();
+}
+
+// ── WEJŚCIE MYSZY / DOTYKU ──
+function initInput() {
+  const canvas = document.getElementById('cvCells');
+
+  // Zoom kółkiem
+  canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    WORLD.zoomAt(e.deltaY > 0 ? 0.85 : 1.18, e.clientX, e.clientY, canvas);
+  }, { passive: false });
+
+  // Pinch-to-zoom (mobile)
+  let lastPinch = null;
+  canvas.addEventListener('touchstart', e => {
+    if (e.touches.length === 2) {
+      lastPinch = Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
+      return;
+    }
+    const pos = WORLD.screenToWorld(e.touches[0].clientX, e.touches[0].clientY, canvas);
+    if (!UI.isPainting) WORLD.startDrag(e.touches[0].clientX, e.touches[0].clientY, canvas);
+    else UI.interact(pos.x, pos.y, false);
+  }, { passive: true });
+
+  canvas.addEventListener('touchmove', e => {
+    e.preventDefault();
+    if (e.touches.length === 2 && lastPinch) {
+      const dist = Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
+      WORLD.zoomAt(dist/lastPinch, (e.touches[0].clientX+e.touches[1].clientX)/2, (e.touches[0].clientY+e.touches[1].clientY)/2, canvas);
+      lastPinch = dist;
+      return;
+    }
+    if (e.touches.length === 1) {
+      const pos = WORLD.screenToWorld(e.touches[0].clientX, e.touches[0].clientY, canvas);
+      if (UI.currentTool === 'paint' && UI.isPainting) UI.interact(pos.x, pos.y, true);
+      else WORLD.moveDrag(e.touches[0].clientX, e.touches[0].clientY);
+    }
+  }, { passive: false });
+
+  canvas.addEventListener('touchend', e => {
+    lastPinch = null;
+    UI.isPainting = false;
+    WORLD.endDrag();
+    if (UI.currentTool === 'select' || UI.currentTool === 'kill') {
+      const pos = WORLD.screenToWorld(e.changedTouches[0].clientX, e.changedTouches[0].clientY, canvas);
+      const c = UI.findCell(pos.x, pos.y);
+      if (c) {
+        const sp = SIM.species[c.spId];
+        UI.showToast(`${sp?.name} F:${(SIM.fitC.get(c.id)?.f*100||0).toFixed(0)}% E:${Math.round(c.stats.energy)}`);
+      }
+    }
+  }, { passive: true });
+
+  // Mouse
+  let mouseDownTool = false;
+  canvas.addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    const pos = WORLD.screenToWorld(e.clientX, e.clientY, canvas);
+    if (UI.currentTool === 'paint' || UI.currentTool === 'barrier') {
+      UI.isPainting = true;
+      UI.interact(pos.x, pos.y, false);
+    } else if (UI.currentTool === 'kill' || UI.currentTool === 'select') {
+      UI.interact(pos.x, pos.y, false);
+    } else {
+      WORLD.startDrag(e.clientX, e.clientY, canvas);
+    }
+    mouseDownTool = true;
+  });
+
+  canvas.addEventListener('mousemove', e => {
+    const pos = WORLD.screenToWorld(e.clientX, e.clientY, canvas);
+    if (UI.isPainting && UI.currentTool === 'paint') UI.interact(pos.x, pos.y, true);
+    else if (!mouseDownTool || !WORLD.dragging) WORLD.moveDrag(e.clientX, e.clientY);
+
+    // Tooltip
+    if (UI.currentTool === 'select' || UI.currentTool === 'kill') {
+      const c = UI.findCell(pos.x, pos.y);
+      UI.showTip(c, e.clientX, e.clientY);
+    } else {
+      document.getElementById('tip').style.display = 'none';
+    }
+  });
+
+  canvas.addEventListener('mouseup', () => {
+    UI.isPainting = false;
+    mouseDownTool = false;
+    WORLD.endDrag();
+  });
+
+  canvas.addEventListener('mouseleave', () => {
+    UI.isPainting = false;
+    mouseDownTool = false;
+    WORLD.endDrag();
+    document.getElementById('tip').style.display = 'none';
+  });
+
+  // Brush size
+  const bs = document.getElementById('brushSize');
+  if (bs) bs.addEventListener('input', function() {
+    UI.brushR = +this.value * 4;  // skala do world coords
+    const lbl = document.getElementById('brushSizeLbl');
+    if (lbl) lbl.textContent = this.value;
+  });
+
+  // Zoom buttons
+  document.getElementById('btnZoomIn')?.addEventListener('click', () => WORLD.zoomIn(document.getElementById('cvCells')));
+  document.getElementById('btnZoomOut')?.addEventListener('click', () => WORLD.zoomOut(document.getElementById('cvCells')));
+  document.getElementById('btnZoomFit')?.addEventListener('click', () => WORLD.zoomFit(document.getElementById('cvCells')));
+
+  // Rewind slider
+  document.getElementById('rewindSlider')?.addEventListener('input', function() {
+    UI.rewindStep(+this.value - (UI.rewindMode ? 0 : 0));
+    // Ustaw indeks bezpośrednio
+    const idx = +this.value;
+    if (SIM.rewindBuf[idx]) RENDERER.frameRewind(idx);
+  });
+
+  // Klawiatura
+  document.addEventListener('keydown', e => {
+    if (e.key === ' ') { e.preventDefault(); togglePause(); }
+    if (e.key === 'f' || e.key === 'F') WORLD.zoomFit(document.getElementById('cvCells'));
+    if (e.key === '+' || e.key === '=') WORLD.zoomIn(document.getElementById('cvCells'));
+    if (e.key === '-') WORLD.zoomOut(document.getElementById('cvCells'));
+    if (e.key === '1') setSpeed(1,'sp1');
+    if (e.key === '3') setSpeed(3,'sp3');
+    if (e.key === '8') setSpeed(8,'sp8');
+  });
+
+  // Env slidery
+  const envMap = [
+    ['sTemp','temp',v=>v+'°C','lTmp'],
+    ['sLight','light',v=>v+'%','lLgt'],
+    ['sPh','ph',v=>(v/10).toFixed(1),'lPh'],
+    ['sTox','tox',v=>v+'%','lTox'],
+    ['sNut','nut',v=>v+'%','lNut'],
+    ['sRad','rad',v=>v+'%','lRad'],
+    ['sOsm','osm',v=>v+'%','lOsm'],
+  ];
+  envMap.forEach(([slId, key, fmt, lbId]) => {
+    const sl = document.getElementById(slId);
+    if (!sl) return;
+    sl.addEventListener('input', function() {
+      const v = +this.value;
+      ENV.setParam(key === 'ph' ? 'ph' : key, key === 'ph' ? v/10 : v);
+      const lb = document.getElementById(lbId); if (lb) lb.textContent = fmt(v);
+      if (SIM_RUNNING) UI.logA(`<span style="color:var(--c)">[ENV]</span> ${key}=${fmt(v)}`);
+    });
+  });
+}
+
+// ── RESIZE ──
+function resizeAll() {
+  RENDERER.resize();
+  // Po resize przelicz zoom żeby mapa nadal pasowała
+  const cv = document.getElementById('cvCells');
+  if (cv && cv.width > 0) WORLD.zoomFit(cv);
+  if (!SIM_RUNNING) {
+    // Narysuj tło świata (biomy)
+    if (RENDERER && RENDERER.frame) {
+      // Renderuj same tło bez komórek
+      const ctxB = document.getElementById('cvBiome')?.getContext('2d');
+      if (ctxB) WORLD.renderBackground(ctxB, document.getElementById('cvBiome'));
+    }
+    const ctx = document.getElementById('cvCells').getContext('2d');
+    const cv  = document.getElementById('cvCells');
+    ctx.clearRect(0,0,cv.width,cv.height);
+    ctx.strokeStyle = 'rgba(77,158,247,.03)'; ctx.lineWidth = 1;
+    for (let x=0;x<cv.width;x+=50){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,cv.height);ctx.stroke();}
+    for (let y=0;y<cv.height;y+=50){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(cv.width,y);ctx.stroke();}
+  }
+}
+
+// ── INIT ──
+window.addEventListener('load', () => {
+  RENDERER.init();
+  WORLD.generateBiomes(42);
+  resizeAll();
+  // Zoomfit PO resize - canvas ma już właściwy rozmiar
+  const cv = document.getElementById('cvCells');
+  WORLD.zoomFit(cv);
+  initInput();
+  cfgUp();
+  UI.setTool('paint');
+  setTimescale('fast');
+  const defPreset = document.querySelector('.pbtn.sel');
+  if (!defPreset) {
+    const first = document.querySelector('.pbtn');
+    if (first) { first.classList.add('sel'); }
+  }
+  // Narysuj tło od razu
+  RENDERER.frame();
+});
+window.addEventListener('resize', resizeAll);
+document.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+
+</script>
+</body>
+</html>

@@ -130,23 +130,37 @@ button,input,select { font-family:inherit; }
 
 /* ── TOOL BAR (right of canvas, above right panel) ── */
 #toolbar {
-  position:fixed; top:52px; right:calc(var(--right-w) + 6px); z-index:200;
-  display:flex; flex-direction:column; gap:3px;
+  position:fixed; bottom:52px; left:50%;
+  transform:translateX(-50%);
+  z-index:200;
+  display:flex; flex-direction:row; gap:4px;
+  background:rgba(11,17,32,0.90);
+  border:1px solid var(--brd);
+  border-radius:8px;
+  padding:6px 10px;
+  backdrop-filter:blur(10px);
+  -webkit-backdrop-filter:blur(10px);
+  flex-wrap:nowrap;
+  align-items:center;
 }
-@media(max-width:900px){ #toolbar { right:8px; } }
-@media(min-width:900px){ #toolbar { right:calc(var(--right-w) + 6px); } }
+@media(max-width:700px){ #toolbar { bottom:54px; padding:4px 6px; gap:2px; } }
 .tbtn {
-  width:32px; height:32px; border-radius:4px; border:1px solid var(--brd);
-  background:rgba(15,23,41,.9); color:var(--txt); font-size:11px;
-  font-family:var(--font-mono); cursor:pointer; display:flex;
-  align-items:center; justify-content:center; transition:all .15s;
-  backdrop-filter:blur(4px);
+  height:32px; padding:0 10px;
+  border-radius:5px; border:1px solid var(--brd);
+  background:transparent; color:var(--txt);
+  font-size:9px; font-family:var(--font-mono);
+  cursor:pointer; display:flex; align-items:center; gap:5px;
+  transition:all .15s; white-space:nowrap; letter-spacing:.5px;
+  user-select:none;
 }
 .tbtn:hover { border-color:var(--blue); color:var(--blue);
   background:rgba(77,158,247,.1); }
 .tbtn.on { border-color:var(--cyan); color:var(--cyan);
   background:rgba(0,212,232,.12); }
-.tbtn.r.on { border-color:var(--red); color:var(--red); }
+.tbtn.r { color:var(--red); border-color:rgba(229,83,75,.3); }
+.tbtn.r:hover { background:rgba(229,83,75,.12); border-color:var(--red); }
+.tbtn.r.on { border-color:var(--red); color:var(--red); background:rgba(229,83,75,.15); }
+.tbtn-sep { width:1px; height:20px; background:var(--brd); margin:0 2px; flex-shrink:0; }
 
 #zoneType {
   width:32px; height:26px; background:var(--panel);
@@ -627,26 +641,65 @@ canvas#treeCanvas { border:1px solid var(--brd); border-radius:4px;
 
 <!-- TOOL BAR -->
 <div id="toolbar">
-  <div class="tbtn" id="t-select" onclick="UI.setTool('select')" title="Info [I]">i</div>
-  <div class="tbtn r" id="t-kill" onclick="UI.setTool('kill')" title="Zabij [X]">x</div>
-  <div class="tbtn on" id="t-paint" onclick="UI.setTool('paint')" title="Maluj strefy">.</div>
-  <div class="tbtn" id="t-barrier" onclick="UI.setTool('barrier')" title="Bariera geograficzna">|</div>
-  <div class="tbtn" onclick="WORLD.clearZones()" title="Wyczysc strefy">C</div>
-  <div class="tbtn" onclick="UI.showTree()" title="Drzewo ewolucji">T</div>
-  <div class="tbtn" onclick="UI.showGenStats()" title="Statystyki pokolen">S</div>
-  <div class="tbtn" onclick="UI.enterRewind()" title="Przewin">&lt;</div>
-  <div class="tbtn" id="turboBtn" onclick="toggleTurbo()" title="Turbo">-</div>
-  <div class="tbtn r" onclick="triggerExtinction()" title="Katastrofa" style="margin-top:6px">!</div>
-  <select id="zoneType" title="Typ strefy">
-    <option value="food">N</option>
-    <option value="tox">T</option>
-    <option value="hot">G</option>
-    <option value="cold">Z</option>
-    <option value="rad">R</option>
-  </select>
-  <div class="brush-row">
-    <input type="range" id="brushSize" min="4" max="40" value="14">
-    <span class="brush-lbl" id="brushSizeLbl">14</span>
+  <!-- Tryby kursora -->
+  <div class="tbtn on" id="t-select" onclick="UI.setTool('select')" title="Kliknij komórke aby zobaczyć info">
+    &#x1F50D; INFO
+  </div>
+  <div class="tbtn r" id="t-kill" onclick="UI.setTool('kill')" title="Kliknij komórke aby ją zabić">
+    &#x2716; ZABIJ
+  </div>
+  <div class="tbtn" id="t-paint" onclick="UI.setTool('paint')" title="Maluj strefy środowiskowe">
+    &#x1F58C; MALUJ
+  </div>
+  <div class="tbtn" id="t-barrier" onclick="UI.setTool('barrier')" title="Narysuj barierę geograficzną (2 kliknięcia)">
+    &#x25A6; BARIERA
+  </div>
+
+  <!-- Typ strefy + rozmiar -->
+  <div class="tbtn-sep"></div>
+  <div style="display:flex;align-items:center;gap:5px;padding:0 4px;">
+    <span style="font-family:var(--font-mono);font-size:8px;color:var(--txt);">STREFA:</span>
+    <select id="zoneType" style="height:26px;background:var(--bg);border:1px solid var(--brd);
+      color:var(--orange);font-family:var(--font-mono);font-size:9px;
+      border-radius:4px;padding:0 4px;cursor:pointer;">
+      <option value="food">&#x1F7E2; Pokarm</option>
+      <option value="tox">&#x1F534; Toksyczna</option>
+      <option value="hot">&#x1F7E0; Goraca</option>
+      <option value="cold">&#x1F535; Zimna</option>
+      <option value="rad">&#x1F7E3; Radioaktywna</option>
+    </select>
+    <span style="font-family:var(--font-mono);font-size:8px;color:var(--txt);">R:</span>
+    <input type="range" id="brushSize" min="4" max="40" value="14"
+      style="-webkit-appearance:none;width:60px;height:3px;background:var(--brd);
+      border-radius:2px;outline:none;cursor:pointer;">
+    <span id="brushSizeLbl" style="font-family:var(--font-mono);font-size:8px;
+      color:var(--txt);min-width:16px;">14</span>
+    <div class="tbtn" onclick="WORLD.clearZones()" title="Usuń wszystkie strefy" style="padding:0 8px;">
+      &#x239A; WYCZYSC
+    </div>
+  </div>
+
+  <div class="tbtn-sep"></div>
+
+  <!-- Analiza -->
+  <div class="tbtn" onclick="UI.showTree()" title="Drzewo ewolucji gatunków">
+    &#x1F332; DRZEWO
+  </div>
+  <div class="tbtn" onclick="UI.showGenStats()" title="Statystyki pokoleń">
+    &#x1F4CA; STATYST.
+  </div>
+  <div class="tbtn" onclick="UI.enterRewind()" title="Cofnij i obejrzyj historię">
+    &#x23EA; HISTORIA
+  </div>
+  <div class="tbtn" id="turboBtn" onclick="toggleTurbo()" title="Tryb turbo - szybka symulacja bez renderowania">
+    &#x26A1; TURBO
+  </div>
+
+  <div class="tbtn-sep"></div>
+
+  <!-- Akcje -->
+  <div class="tbtn r" onclick="triggerExtinction()" title="Wywołaj masowe wymieranie">
+    &#x2620; KATASTROFA
   </div>
 </div>
 
@@ -2830,12 +2883,14 @@ const UI = (() => {
     const dur=Math.floor(SIM.simTime/1000);
     const all=Object.values(SIM.species);
     const allG=all.filter(s=>!s.isSub).length, allS=all.filter(s=>s.isSub).length;
+    const shown=allIds.size;
     document.getElementById('chtStats').innerHTML=
       `<span>Czas:<span class="csv">${pad(Math.floor(dur/60))}:${pad(dur%60)}</span></span>`+
       `<span>Rok:<span class="csv">${SEASON.getYear()+1}</span></span>`+
       `<span>Mutacje:<span class="csv">${SIM.totalMuts}</span></span>`+
       `<span>Gatunki:<span class="csv">${allG}</span></span>`+
       `<span>Podgatunki:<span class="csv">${allS}</span></span>`+
+      `<span>Na wykresie:<span class="csv">${shown}</span></span>`+
       `<span>Wymarle:<span class="csv">${SIM.totalExtinct}</span></span>`+
       `<span>Inteligentne:<span class="csv">${SIM.intelligentSpecies.size}</span></span>`;
 
@@ -2849,10 +2904,27 @@ const UI = (() => {
     cc.strokeStyle='rgba(105,255,71,.06)'; cc.lineWidth=1;
     for(let i=0;i<=6;i++){const y=25+(H-40)*i/6;cc.beginPath();cc.moveTo(40,y);cc.lineTo(W-8,y);cc.stroke();}
 
-    // Zbierz wszystkie IDs
-    const allIds=new Set();
-    history.forEach(h=>Object.keys(h).forEach(k=>{ if(k!=='time') allIds.add(+k); }));
-    Object.keys(SIM.species).forEach(k=>allIds.add(+k));
+    // Zbierz IDs — pomijaj mikro-gatunki (max populacja < 5 lub żyły < 3 snapshoty)
+    const MIN_POP = 30;   // minimalny peak populacji żeby trafić na wykres
+    const MIN_SNAPS = 3;  // minimalna liczba snapshotów (nie chwilowe)
+    const allIds = new Set();
+    // Per-gatunek: sprawdź peak populacji i liczbę snapshotów
+    const spPeak  = {};
+    const spSnaps = {};
+    history.forEach(h => Object.keys(h).forEach(k => {
+      if (k === 'time') return;
+      const id = +k, v = h[k] || 0;
+      spPeak[id]  = Math.max(spPeak[id]  || 0, v);
+      spSnaps[id] = (spSnaps[id] || 0) + (v > 0 ? 1 : 0);
+    }));
+    // Dodaj tylko te które spełniają próg
+    Object.keys(spPeak).forEach(id => {
+      if (spPeak[id] >= MIN_POP && spSnaps[id] >= MIN_SNAPS) allIds.add(+id);
+    });
+    // Zawsze dodaj żyjące gatunki z populacją >= MIN_POP
+    Object.values(SIM.species).forEach(sp => {
+      if (!sp.extinct && sp.count >= MIN_POP) allIds.add(sp.id);
+    });
 
     let maxT=SIM.simTime;
     history.forEach(h=>{ if(h.time>maxT) maxT=h.time; });
@@ -2887,7 +2959,7 @@ const UI = (() => {
     for(let i=0;i<=4;i++){const y=(H-15)-(i/4)*(H-40);cc.fillText(Math.round(maxC*i/4),2,y+3);}
     cc.fillText('CZAS->',W-52,H-3);
 
-    const sorted=[...allIds].map(id=>SIM.species[id]).filter(Boolean)
+    const sorted=[...allIds].map(id=>SIM.species[id]).filter(Boolean).filter(sp=>!sp.isSub||sp.count>0)
       .sort((a,b)=>a.extinct-b.extinct||b.count-a.count);
     document.getElementById('chtLegend').innerHTML=sorted.map(sp=>{
       const col=GENOME.color(sp.refDNA);
@@ -3345,7 +3417,7 @@ window.addEventListener('load', () => {
   WORLD.zoomFit(cv);
   initInput();
   cfgUp();
-  UI.setTool('paint');
+  UI.setTool('select');
   setTimescale('fast');
   const defPreset = document.querySelector('.pbtn.sel');
   if (!defPreset) {

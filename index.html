@@ -2908,7 +2908,6 @@ const UI = (() => {
     const dur=Math.floor(SIM.simTime/1000);
     const all=Object.values(SIM.species);
     const allG=all.filter(s=>!s.isSub).length, allS=all.filter(s=>s.isSub).length;
-    const shown=allIds.size;
     document.getElementById('chtStats').innerHTML=
       `<span>Czas:<span class="csv">${pad(Math.floor(dur/60))}:${pad(dur%60)}</span></span>`+
       `<span>Rok:<span class="csv">${SEASON.getYear()+1}</span></span>`+
@@ -2961,6 +2960,8 @@ const UI = (() => {
       }
     }
     allIds.forEach(id => { const sp=SIM.species[id]; if(sp&&sp.count>maxC) maxC=sp.count; });
+
+    const shown = allIds.size;
 
     // Decimacja — max 300 punktów na linię niezależnie od rozmiaru historii
     const MAX_PTS = 300;

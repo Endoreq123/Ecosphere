@@ -1136,8 +1136,8 @@ const GENOME = (() => {
   // ── SPECJACJA przez forkDNA ──
   // SUB_THRESH: podgatunek (fork NIE resetuje się)
   // SP_THRESH:  nowy gatunek (fork resetuje się)
-  const SUB_THRESH = 0.095;
-  const SP_THRESH  = 0.210;
+  const SUB_THRESH = 0.055;  // podgatunek po ~2 SNP
+  const SP_THRESH  = 0.130;  // nowy gatunek po ~5 SNP
 
   function genomeDist(a, b) {
     let s = 0;
@@ -1635,8 +1635,10 @@ window._deadPool = deadPool;
   const fitC = new Map();
 
   function fitness(c) {
+    // Cache uwzględnia pozycję komórki (biom zależy od miejsca)
     const cv = fitC.get(c.id);
-    if (cv && cv.v === envVer) return cv.f;
+    const px = Math.floor(c.x/80), py = Math.floor(c.y/80);
+    if (cv && cv.v === envVer && cv.px === px && cv.py === py) return cv.f;
     const g = c.dna;
     const z = WORLD.zoneAt(c.x, c.y);
     const season = SEASON.getAtPos(c.x, c.y);
@@ -1681,7 +1683,8 @@ window._deadPool = deadPool;
     f *= 1 + c.stats.brainBonus * 0.25;
 
     const val = Math.max(0.01, f);
-    fitC.set(c.id, { v: envVer, f: val });
+    const px2=Math.floor(c.x/80), py2=Math.floor(c.y/80);
+    fitC.set(c.id, { v: envVer, px: px2, py: py2, f: val });
     return val;
   }
 
@@ -1884,6 +1887,13 @@ window._deadPool = deadPool;
     }
     const press = Math.max(0, pop / K - 1.0);
 
+    // Ogranicz rozmiar fitC (co 200 ticków)
+    if(tickN % 200 === 0 && fitC.size > 3000){
+      // Usuń wpisy dla martwych/nieistniejących komórek
+      const liveIds = new Set(cells.map(c=>c.id));
+      for(const id of fitC.keys()) if(!liveIds.has(id)) fitC.delete(id);
+    }
+
     // Wyczyść martwe organizmy
     for (let i = orgs.length-1; i >= 0; i--) {
       const o = orgs[i], al = o.cells.filter(c => c.alive);
@@ -1997,9 +2007,20 @@ window._deadPool = deadPool;
           });
         }
       } else {
-        c.vx += (Math.random()-.5)*.10; c.vy += (Math.random()-.5)*.10;
+        // Komórki w złym biomie szukają lepszego
+        if (f < 0.45 && tickN % 10 === (c.id % 10)) {
+          const angle = Math.random() * Math.PI * 2;
+          const tx = Math.max(0, Math.min(WORLD.W, c.x + Math.cos(angle)*100));
+          const ty = Math.max(0, Math.min(WORLD.H, c.y + Math.sin(angle)*100));
+          const tb = WORLD.getBiomeAt(tx, ty);
+          const optT = 20 + c.dna.hR * 50;
+          const curD = Math.abs(WORLD.getBiomeAt(c.x, c.y).temp - optT);
+          const newD = Math.abs(tb.temp - optT);
+          if (newD < curD) { c.vx += Math.cos(angle)*0.6; c.vy += Math.sin(angle)*0.6; }
+        }
+        c.vx += (Math.random()-.5)*.12; c.vy += (Math.random()-.5)*.12;
         const len = Math.sqrt(c.vx**2+c.vy**2)||1;
-        const sp2 = Math.min(s.spd * f * 33 * dtS, 2.5);
+        const sp2 = Math.min(s.spd * f * 38 * dtS, 3.2);
         c.vx = c.vx/len*sp2; c.vy = c.vy/len*sp2;
       }
 
@@ -2062,8 +2083,9 @@ window._deadPool = deadPool;
     if (simTime - lastHistMs > HIST_INT) {
       lastHistMs = simTime;
       const sn = { time: simTime };
-      Object.values(species).forEach(sp => { sn[sp.id] = sp.count; });
+      Object.values(species).forEach(sp => { if(sp.count > 0) sn[sp.id] = sp.count; });
       history.push(sn);
+      if (history.length > 600) history.splice(0, history.length - 600);
     }
 
     // Rewind
@@ -2184,13 +2206,16 @@ window._deadPool = deadPool;
 
   // ── REWIND ──
   function saveRewindFrame() {
+    // Lekki snapshot — tylko co trzecia klatka rewind i mniej danych
     rewindBuf.push({
       t: simTime,
-      cells: cells.map(c => ({
-        x:c.x, y:c.y, spId:c.spId, dna:{...c.dna},
-        energy:c.stats.energy, age:c.stats.age,
-        maxAge:c.stats.maxAge, maxE:c.stats.maxE,
-        sz:c.stats.sz, intel:c.stats.intel,
+      cells: cells.slice(0, 2000).map(c => ({
+        x:c.x, y:c.y, spId:c.spId,
+        // Tylko kolor z DNA, nie całe DNA
+        hue:c.dna.hue, sat:c.dna.sat, lit:c.dna.lit,
+        energy:c.stats.energy, maxE:c.stats.maxE,
+        age:c.stats.age, maxAge:c.stats.maxAge,
+        sz:c.stats.sz, intel:c.stats.intel||'basic',
       })),
     });
     if (rewindBuf.length > REWIND_MAX) rewindBuf.shift();
@@ -2539,7 +2564,7 @@ const RENDERER = (() => {
       if (!WORLD.isVisible(c.x,c.y,c.sz+6,cvCells)) continue;
       const sc=WORLD.worldToScreen(c.x,c.y,cvCells);
       const r=Math.max(2,c.sz*WORLD.cam.zoom);
-      const col=`hsl(${Math.round(c.dna.hue*360)},${Math.round(c.dna.sat*55+15)}%,${Math.round(c.dna.lit*28+36)}%)`;
+      const col=`hsl(${Math.round((c.hue||c.dna?.hue||0)*360)},${Math.round((c.sat||c.dna?.sat||0.8)*55+15)}%,${Math.round((c.lit||c.dna?.lit||0.58)*28+36)}%)`;
       const er=Math.max(0,Math.min(1,c.energy/c.maxE));
       ctxC.globalAlpha=(0.6+er*0.4)*(1-Math.min(1,c.age/c.maxAge)*0.45);
       ctxC.beginPath();ctxC.arc(sc.x,sc.y,r*0.9,0,Math.PI*2);ctxC.fillStyle=col;ctxC.fill();
@@ -2928,29 +2953,55 @@ const UI = (() => {
 
     let maxT=SIM.simTime;
     history.forEach(h=>{ if(h.time>maxT) maxT=h.time; });
-    let maxC=1;
-    allIds.forEach(id=>{
-      const sp=SIM.species[id]; if(sp&&sp.count>maxC) maxC=sp.count;
-      history.forEach(h=>{ if((h[id]||0)>maxC) maxC=h[id]; });
-    });
+    // maxC — jeden przebieg przez historię
+    let maxC = 1;
+    for (const sn of history) {
+      for (const id of allIds) {
+        const v = sn[id]; if (v > maxC) maxC = v;
+      }
+    }
+    allIds.forEach(id => { const sp=SIM.species[id]; if(sp&&sp.count>maxC) maxC=sp.count; });
 
-    allIds.forEach(id=>{
-      const sp=SIM.species[id]; if(!sp) return;
-      const col=GENOME.color(sp.refDNA);
-      cc.beginPath(); cc.strokeStyle=col; cc.lineWidth=sp.isSub?1:2;
-      if(sp.isSub) cc.setLineDash([4,3]);
-      let first=true;
-      history.forEach(sn=>{
-        if(sn[id]===undefined&&!first) return;
-        const x=40+(sn.time/maxT)*(W-48);
-        const y=(H-15)-((sn[id]||0)/maxC)*(H-40);
-        if(first){cc.moveTo(x,y);first=false;}else cc.lineTo(x,y);
-      });
-      if(sp.count>0){const x=40+(SIM.simTime/maxT)*(W-48);const y=(H-15)-(sp.count/maxC)*(H-40);if(first)cc.moveTo(x,y);else cc.lineTo(x,y);}
-      cc.stroke(); cc.setLineDash([]);
-      const lx=40+(Math.min(SIM.simTime,maxT)/maxT)*(W-48);
-      const ly=(H-15)-(sp.count/maxC)*(H-40);
-      cc.beginPath();cc.arc(lx,ly,sp.isSub?2:3,0,Math.PI*2);cc.fillStyle=col;cc.fill();
+    // Decimacja — max 300 punktów na linię niezależnie od rozmiaru historii
+    const MAX_PTS = 300;
+    const step = Math.max(1, Math.floor(history.length / MAX_PTS));
+    // Zbuduj zdecymowaną historię (co step-ty snapshot + zawsze ostatni)
+    const histDec = [];
+    for (let idx = 0; idx < history.length; idx += step) histDec.push(history[idx]);
+    if (histDec[histDec.length-1] !== history[history.length-1])
+      histDec.push(history[history.length-1]);
+
+    allIds.forEach(id => {
+      const sp = SIM.species[id]; if (!sp) return;
+      const col = GENOME.color(sp.refDNA);
+      cc.beginPath();
+      cc.strokeStyle = col;
+      cc.lineWidth   = sp.isSub ? 0.8 : 1.5;
+      cc.globalAlpha = sp.isSub ? 0.45 : 0.85;
+      if (sp.isSub) cc.setLineDash([4,3]);
+      let first = true;
+      for (const sn of histDec) {
+        const v = sn[id] || 0;
+        if (v === 0 && !first) continue;  // skok do zera = przerwa
+        const x = 40 + (sn.time / maxT) * (W-48);
+        const y = (H-15) - (v / maxC) * (H-40);
+        if (first) { cc.moveTo(x, y); first = false; }
+        else cc.lineTo(x, y);
+      }
+      // Aktualny punkt
+      if (sp.count > 0) {
+        const x = 40 + (SIM.simTime/maxT)*(W-48);
+        const y = (H-15)-(sp.count/maxC)*(H-40);
+        if (first) cc.moveTo(x, y); else cc.lineTo(x, y);
+      }
+      cc.stroke();
+      cc.setLineDash([]);
+      cc.globalAlpha = 1;
+      // Kropka końcowa
+      const lx = 40 + (Math.min(SIM.simTime,maxT)/maxT)*(W-48);
+      const ly = (H-15) - (sp.count/maxC)*(H-40);
+      cc.beginPath(); cc.arc(lx, ly, sp.isSub?2:3, 0, Math.PI*2);
+      cc.fillStyle = col; cc.fill();
     });
 
     cc.strokeStyle='rgba(105,255,71,.4)';cc.lineWidth=1.5;
